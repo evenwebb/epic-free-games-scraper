@@ -112,13 +112,14 @@ def scrape_epic_free_games():
             with open(image_path, 'wb') as img_file:
                 img_file.write(response.content)
 
-            # Add to past games
-            past_games.append({
-                'Name': game_name,
-                'Link': game_link,
-                'Image': image_path,
-                'Availability': date_period
-            })
+            # Check for duplicates before adding to past games
+            if not any(game['Link'] == game_link for game in past_games):
+                past_games.append({
+                    'Name': game_name,
+                    'Link': game_link,
+                    'Image': image_path,
+                    'Availability': date_period
+                })
 
         # Scrape next free games
         next_offer_cards = driver.find_elements(By.XPATH, '//div[@data-component="FreeOfferCard"]')
@@ -166,7 +167,7 @@ def scrape_epic_free_games():
                     send_pushover_notification(
                         user_key, app_token,
                         title="New Free Game Available!",
-                        message=f"{new_game} is now free on Epic Games Store!\nAvailability: {game_data['Availability']}\nLink: {game['link']}",
+                        message=f"{new_game} is now free on Epic Games Store!\nAvailable Until: {game_data['Availability']}",
                         image_path=game_data.get("Image")
                     )
 
