@@ -1,17 +1,47 @@
 # Epic Games Scraper
 
-A Python-based web scraper for fetching the weekly free games from the Epic Games Store. Includes Docker support for easy deployment.
+A Python-based web scraper that fetches the weekly free games from the Epic Games Store. The scraper supports Docker for easy deployment and maintains a full history of past free games. Additionally, it provides information about upcoming games.
 
 It uses Selenium in a docker to load the page as the Free Game section is loaded using JavaScript, so basic scraping doesn't work.
 
+---
+
 ## Features
-- Scrapes free game titles, links, images, and availability dates.
-- Saves data as a JSON file and downloads game images.
 
-## Usage
+### Scraping Features
+- **Past Games**:
+  - Scrapes all currently free games from the Epic Games Store.
+  - Appends new games to the `Past Games` section in a JSON file while keeping historical data intact.
+  - Avoids duplicate entries to maintain clean and concise data.
+- **Upcoming Games**:
+  - Scrapes the next free games (from `FreeOfferCard` elements).
+  - Replaces the `Next Games` section in the JSON file with every script run.
 
-1. Build the Docker image:
-      docker build -t epic-games-scraper .
-   
-2. Run the scraper:
-      docker run --rm -v "/path/to/output:/app/output" epic-games-scraper
+### JSON Output
+The scraped data is saved in a structured JSON format:
+
+```json
+{
+  "Next Games": [
+    {
+      "Name": "Upcoming Game 1",
+      "Link": "https://store.epicgames.com/en-US/p/upcoming-game-1",
+      "Image": "https://cdn.example.com/image1.jpg",
+      "Availability": "Coming Soon"
+    }
+  ],
+  "Past Games": [
+    {
+      "Name": "Past Game 1",
+      "Link": "https://store.epicgames.com/en-US/p/past-game-1",
+      "Image": "output/images/past-game-1.jpg",
+      "Availability": "Jan 09 at 04:00 PM"
+    },
+    {
+      "Name": "Past Game 2",
+      "Link": "https://store.epicgames.com/en-US/p/past-game-2",
+      "Image": "output/images/past-game-2.jpg",
+      "Availability": "Jan 16 at 04:00 PM"
+    }
+  ]
+}
