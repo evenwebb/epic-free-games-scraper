@@ -105,15 +105,14 @@ def scrape_epic_free_games():
             if not any(game['Link'] == game_link for game in past_games):
                 new_games.append(game_name)
 
-            # Save image
-            image_filename = f"{game_id}.jpg"
-            image_path = os.path.join('output/images', image_filename)
-            response = requests.get(image_url)
-            with open(image_path, 'wb') as img_file:
-                img_file.write(response.content)
+                # Save image
+                image_filename = f"{game_id}.jpg"
+                image_path = os.path.join('output/images', image_filename)
+                response = requests.get(image_url)
+                with open(image_path, 'wb') as img_file:
+                    img_file.write(response.content)
 
-            # Check for duplicates before adding to past games
-            if not any(game['Link'] == game_link for game in past_games):
+                # Add to past games
                 past_games.append({
                     'Name': game_name,
                     'Link': game_link,
@@ -160,16 +159,48 @@ def scrape_epic_free_games():
                 print(f"Removed unused file: {filename}")
 
         # Notify via Pushover
-        if pushover_enabled and (notify_always or new_games):
-            for new_game in new_games:
-                game_data = next((game for game in past_games if game["Name"] == new_game), None)
-                if game_data:
-                    send_pushover_notification(
-                        user_key, app_token,
-                        title="New Free Game Available!",
-                        message=f"{new_game} is now free on Epic Games Store!\nAvailable Until: {game_data['Availability']}",
-                        image_path=game_data.get("Image")
-                    )
+        # Notify via Pushover
+        if pushover_enabled:
+            if notify_always or new_games:
+                if notify_always:
+                    print("Pushover notifications are set to always notify.")
+                    for game in past_games[-len(offer_cards):]:  # Send notifications for all current games
+                        image_path = game.get("Image")
+                        if image_path and os.path.exists(image_path):
+                            print(f"Image found for {game['Name']}: {image_path}")
+                        else:
+                            print(f"No valid image found for {game['Name']}. Image will not be attached.")
+                            image_path = None  # Ensure no invalid image is passed
+                            
+                        # Send the notification
+                        send_pushover_notification(
+                            user_key,
+                            app_token,
+                            title="Free Game Available!",
+                            message=f"{game['Name']} is free on Epic Games Store!\nAvailability: {game['Availability']}",
+                            image_path=image_path
+                        )
+                    
+                elif new_games:
+                    print(f"New games detected: {new_games}")
+                    for new_game in new_games:
+                        game_data = next((game for game in past_games if game["Name"] == new_game), None)
+                        if game_data:
+                            image_path = game_data.get("Image")
+                            if image_path and os.path.exists(image_path):
+                                print(f"Image found for {new_game}: {image_path}")
+                            else:
+                                print(f"No valid image found for {new_game}. Image will not be attached.")
+                                image_path = None
+                                
+                            send_pushover_notification(
+                                user_key,
+                                app_token,
+                                title="New Free Game Available!",
+                                message=f"{new_game} is now free on Epic Games Store!\nAvailability: {game_data['Availability']}",
+                                image_path=image_path
+                            )
+                            
 
         # Save updated JSON
         updated_data = {
@@ -189,3 +220,4 @@ def scrape_epic_free_games():
 
 if __name__ == '__main__':
     scrape_epic_free_games()
+    
