@@ -12,13 +12,25 @@ It uses Selenium in a docker to load the page as the Free Game section is loaded
 - **Past Games**:
   - Scrapes all currently free games from the Epic Games Store.
   - Appends new games to the `Past Games` section in a JSON file while keeping historical data intact.
-  - Avoids duplicate entries to maintain clean and concise data.
+  - Avoids duplicate entries to maintain clean data.
 - **Upcoming Games**:
   - Scrapes the next free games (from `FreeOfferCard` elements).
   - Replaces the `Next Games` section in the JSON file with every script run.
+  - Dynamically names game images (e.g., `next-game.jpg`, `next-game2.jpg`).
+  - Cleans up unused "next game" images after each run.
+
+### Notifications
+- **Pushover Notifications**:
+  - Optionally sends notifications when new free games are detected.
+  - Includes game availability and the game image in the notification.
+  - Configurable settings:
+    - `enabled`: Turn notifications on or off.
+    - `notify_always`: Always notify or only notify for new games.
 
 ### JSON Output
 The scraped data is saved in a structured JSON format:
+- **Next Games**: Lists upcoming free games.
+- **Past Games**: Maintains a complete history of all past and current free games.
 
 ```json
 {
