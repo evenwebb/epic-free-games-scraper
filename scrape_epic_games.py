@@ -171,7 +171,6 @@ def scrape_epic_free_games():
                 print(f"Removed unused file: {filename}")
 
         # Notify via Pushover
-        # Notify via Pushover
         if pushover_enabled:
             if notify_always or new_games:
                 if notify_always:
