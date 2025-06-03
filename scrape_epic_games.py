@@ -73,6 +73,7 @@ def scrape_epic_free_games():
     next_games = []  # Track upcoming games
     new_games = []  # Track new current games
     existing_next_game_images = []  # Track images for next games
+    current_games = []  # Track current free games for notifications
 
     try:
         # Navigate to the Epic Games free games page
@@ -102,7 +103,8 @@ def scrape_epic_free_games():
             date_period = card.find_element(By.CSS_SELECTOR, 'p > span').text.replace("Free Now - ", "").strip()
 
             # Check for duplicates
-            if not any(game['Link'] == game_link for game in past_games):
+            existing_game = next((game for game in past_games if game['Link'] == game_link), None)
+            if not existing_game:
                 new_games.append(game_name)
 
                 # Save image
@@ -119,6 +121,16 @@ def scrape_epic_free_games():
                     'Image': image_path,
                     'Availability': date_period
                 })
+            else:
+                image_path = existing_game.get('Image')
+
+            # Track current games for notifications
+            current_games.append({
+                'Name': game_name,
+                'Link': game_link,
+                'Image': image_path,
+                'Availability': date_period
+            })
 
         # Scrape next free games
         next_offer_cards = driver.find_elements(By.XPATH, '//div[@data-component="FreeOfferCard"]')
@@ -164,7 +176,7 @@ def scrape_epic_free_games():
             if notify_always or new_games:
                 if notify_always:
                     print("Pushover notifications are set to always notify.")
-                    for game in past_games[-len(offer_cards):]:  # Send notifications for all current games
+                    for game in current_games:  # Send notifications for all current games
                         image_path = game.get("Image")
                         if image_path and os.path.exists(image_path):
                             print(f"Image found for {game['Name']}: {image_path}")
