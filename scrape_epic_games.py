@@ -24,9 +24,16 @@ def send_pushover_notification(user_key, app_token, title, message, image_path=N
             "title": title,
             "message": message
         }
-        files = {"attachment": open(image_path, "rb")} if image_path else None
-
-        response = requests.post("https://api.pushover.net/1/messages.json", data=data, files=files)
+        if image_path:
+            with open(image_path, "rb") as img_file:
+                files = {"attachment": img_file}
+                response = requests.post(
+                    "https://api.pushover.net/1/messages.json", data=data, files=files
+                )
+        else:
+            response = requests.post(
+                "https://api.pushover.net/1/messages.json", data=data
+            )
         if response.status_code == 200:
             print("Pushover notification sent successfully.")
         else:
