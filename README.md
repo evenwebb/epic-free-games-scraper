@@ -57,3 +57,4 @@ The scraped data is saved in a structured JSON format:
     }
   ]
 }
+```
