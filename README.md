@@ -126,36 +126,10 @@ You can manually trigger the workflow:
 
 ---
 
-## Project Structure
-
-```
-epic-free-games-scraper/
-├── scrape_epic_games.py          # Main scraper (Epic API)
-├── db_manager.py                 # SQLite database operations
-├── migrate_historical_data.py    # Import historical JSON data
-├── fetch_historical_images.py    # Download missing game images
-├── generate_website.py            # Static website generator
-├── epic_free_games.json          # Historical data (2018-2025)
-├── output/
-│   ├── epic_games.db             # SQLite database
-│   ├── images/                   # Game images (298+)
-│   └── free_games.json           # JSON export (backward compat)
-├── website/                      # Generated static site
-│   ├── index.html
-│   ├── css/
-│   ├── js/
-│   ├── images/
-│   └── data/games.json
-└── .github/workflows/
-    └── scrape-and-deploy.yml     # GitHub Actions automation
-```
-
----
-
 ## Scripts
 
 ### `scrape_epic_games.py`
-Fetches current and upcoming free games from Epic API, downloads images, updates database.
+Fetches current and upcoming free games from the Epic API, downloads images, and updates the database.
 
 ```bash
 python3 scrape_epic_games.py
@@ -241,7 +215,7 @@ stats = db.get_statistics()
 ## Website Features
 
 ### Timeline View
-- All games organized by year and month
+- All games organised by year and month
 - Lazy loading (50 games at a time)
 - Game images with fallback placeholders
 - Links to Epic Store pages
@@ -297,34 +271,11 @@ The workflow (`.github/workflows/scrape-and-deploy.yml`) runs automatically:
 pip install -r requirements.txt
 ```
 
----
-
-## Contributing
-
-Feel free to open issues or submit pull requests!
-
-### Ideas for Contributions
-- Add more statistics visualizations
-- Implement RSS feed
-- Add export to other formats (CSV, XML)
-- Improve image fetching success rate
-- Add game genres/categories
-
----
-
 ## Credits
 
 - Data sourced from [Epic Games Store API](https://store.epicgames.com)
 - Historical data from community tracking
 - Not affiliated with Epic Games
-
----
-
-## License
-
-MIT License - Feel free to use and modify!
-
----
 
 ## Changelog
 
