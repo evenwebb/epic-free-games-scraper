@@ -1,8 +1,8 @@
 # Epic Games Free Game Scraper With Notifications
 
-A Python-based web scraper that fetches the weekly free games from the Epic Games Store. The scraper supports Docker for easy deployment and maintains a full history of past free games. Additionally, it provides information about upcoming games.
+A Python-based scraper that fetches the weekly free games from the Epic Games Store. The scraper supports Docker for easy deployment and maintains a full history of past free games. Additionally, it provides information about upcoming games.
 
-It uses Selenium in a Docker container to load the page as the Free Game section is loaded using JavaScript, so basic scraping doesn't work. User-agent spoofing is used otherwise the page won't load correctly.
+It uses the official Epic Games API to fetch free game promotions, making it lightweight and reliable without requiring browser automation or bot avoidance measures.
 
 ---
 

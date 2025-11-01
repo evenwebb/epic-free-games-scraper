@@ -1,11 +1,7 @@
 import json
 import os
 import requests
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from datetime import datetime, timezone
 
 def load_settings():
     """Load settings from the external JSON file."""
@@ -41,6 +37,49 @@ def send_pushover_notification(user_key, app_token, title, message, image_path=N
     except Exception as e:
         print(f"Error sending Pushover notification: {e}")
 
+def get_game_link(game):
+    """Construct the store link for a game."""
+    product_slug = game.get('productSlug')
+    url_slug = game.get('urlSlug')
+
+    if product_slug:
+        return f"https://store.epicgames.com/en-US/p/{product_slug}"
+    elif url_slug:
+        return f"https://store.epicgames.com/en-US/p/{url_slug}"
+    else:
+        # Fallback to catalog namespace mapping if available
+        mappings = game.get('catalogNs', {}).get('mappings', [])
+        if mappings:
+            page_slug = mappings[0].get('pageSlug')
+            if page_slug:
+                return f"https://store.epicgames.com/en-US/p/{page_slug}"
+
+    return None
+
+def get_game_image_url(game):
+    """Get the best image URL for a game."""
+    key_images = game.get('keyImages', [])
+
+    # Prefer OfferImageWide, then OfferImageTall, then Thumbnail
+    for image_type in ['OfferImageWide', 'OfferImageTall', 'Thumbnail']:
+        for image in key_images:
+            if image.get('type') == image_type:
+                return image.get('url')
+
+    # If none of the preferred types found, return first image
+    if key_images:
+        return key_images[0].get('url')
+
+    return None
+
+def format_date(iso_date):
+    """Format ISO date to human-readable format."""
+    try:
+        dt = datetime.fromisoformat(iso_date.replace('Z', '+00:00'))
+        return dt.strftime('%b %d at %I:%M %p')
+    except:
+        return iso_date
+
 def scrape_epic_free_games():
     # Load settings
     settings = load_settings()
@@ -48,23 +87,6 @@ def scrape_epic_free_games():
     user_key = settings.get("pushover", {}).get("user_key", "")
     app_token = settings.get("pushover", {}).get("app_token", "")
     notify_always = settings.get("pushover", {}).get("notify_always", False)
-
-    # Path to ChromeDriver
-    driver_path = '/usr/bin/chromedriver'
-
-    # Configure WebDriver options
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')  # Run in headless mode
-    options.add_argument('--no-sandbox')  # Required for Docker
-    options.add_argument('--disable-dev-shm-usage')  # Prevent resource issues
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-    options.add_argument("window-size=1920,1080")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option("useAutomationExtension", False)
-
-    # Initialize WebDriver
-    service = Service(driver_path)
-    driver = webdriver.Chrome(service=service, options=options)
 
     # Paths
     json_file = 'output/free_games.json'
@@ -83,93 +105,119 @@ def scrape_epic_free_games():
     current_games = []  # Track current free games for notifications
 
     try:
-        # Navigate to the Epic Games free games page
-        url = 'https://store.epicgames.com/en-US/free-games'
-        driver.get(url)
+        # Fetch free games from Epic Games API
+        api_url = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US'
+        print("Fetching free games from Epic Games API...")
+        response = requests.get(api_url, timeout=30)
+        response.raise_for_status()
 
-        # Wait until current and next offer cards are loaded
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_all_elements_located((By.XPATH, '//div[@data-component="VaultOfferCard"]'))
-        )
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_all_elements_located((By.XPATH, '//div[@data-component="FreeOfferCard"]'))
-        )
+        api_data = response.json()
+        games = api_data['data']['Catalog']['searchStore']['elements']
 
-        # Scrape current free games
-        offer_cards = driver.find_elements(By.XPATH, '//div[@data-component="VaultOfferCard"]')
-        print(f"Number of current offer cards found: {len(offer_cards)}")
+        now = datetime.now(timezone.utc)
 
-        for card in offer_cards:
-            game_name = card.find_element(By.CSS_SELECTOR, 'h6').text
-            game_link = card.find_element(By.CSS_SELECTOR, 'a').get_attribute('href')
-            if not game_link.startswith("http"):
-                game_link = "https://store.epicgames.com" + game_link
+        # Process games
+        for game in games:
+            if not game.get('promotions'):
+                continue
 
-            game_id = game_link.split('/')[-1]
-            image_url = card.find_element(By.XPATH, './/img[@data-testid="picture-image"]').get_attribute('src')
-            date_period = card.find_element(By.CSS_SELECTOR, 'p > span').text.replace("Free Now - ", "").strip()
+            game_title = game['title']
+            game_link = get_game_link(game)
 
-            # Check for duplicates
-            existing_game = next((game for game in past_games if game['Link'] == game_link), None)
-            if not existing_game:
-                new_games.append(game_name)
+            if not game_link:
+                print(f"Skipping {game_title}: no valid link found")
+                continue
 
-                # Save image
-                image_filename = f"{game_id}.jpg"
-                image_path = os.path.join('output/images', image_filename)
-                response = requests.get(image_url)
-                with open(image_path, 'wb') as img_file:
-                    img_file.write(response.content)
+            # Check current promotions (free now)
+            promo_offers = game['promotions'].get('promotionalOffers', [])
+            if promo_offers and len(promo_offers) > 0:
+                for offer_group in promo_offers:
+                    for offer in offer_group.get('promotionalOffers', []):
+                        start = datetime.fromisoformat(offer['startDate'].replace('Z', '+00:00'))
+                        end = datetime.fromisoformat(offer['endDate'].replace('Z', '+00:00'))
 
-                # Add to past games
-                past_games.append({
-                    'Name': game_name,
-                    'Link': game_link,
-                    'Image': image_path,
-                    'Availability': date_period
-                })
-            else:
-                image_path = existing_game.get('Image')
+                        # Only process if currently free (100% discount)
+                        if start <= now <= end and offer['discountSetting']['discountPercentage'] == 0:
+                            image_url = get_game_image_url(game)
+                            game_id = game.get('id', game_link.split('/')[-1])
+                            date_period = f"Free Now - {format_date(offer['endDate'])}"
 
-            # Track current games for notifications
-            current_games.append({
-                'Name': game_name,
-                'Link': game_link,
-                'Image': image_path,
-                'Availability': date_period
-            })
+                            # Check for duplicates
+                            existing_game = next((g for g in past_games if g['Link'] == game_link), None)
+                            if not existing_game:
+                                new_games.append(game_title)
 
-        # Scrape next free games
-        next_offer_cards = driver.find_elements(By.XPATH, '//div[@data-component="FreeOfferCard"]')
-        print(f"Number of next offer cards found: {len(next_offer_cards)}")
+                                # Save image
+                                if image_url:
+                                    image_filename = f"{game_id}.jpg"
+                                    image_path = os.path.join('output/images', image_filename)
+                                    try:
+                                        img_response = requests.get(image_url, timeout=10)
+                                        img_response.raise_for_status()
+                                        with open(image_path, 'wb') as img_file:
+                                            img_file.write(img_response.content)
+                                        print(f"Downloaded image for {game_title}")
+                                    except Exception as e:
+                                        print(f"Failed to download image for {game_title}: {e}")
+                                        image_path = None
+                                else:
+                                    image_path = None
 
-        next_game_counter = 1
-        for card in next_offer_cards:
-            game_name = card.find_element(By.CSS_SELECTOR, 'h6').text
-            game_link = card.find_element(By.CSS_SELECTOR, 'a').get_attribute('href')
-            if not game_link.startswith("http"):
-                game_link = "https://store.epicgames.com" + game_link
+                                # Add to past games
+                                past_games.append({
+                                    'Name': game_title,
+                                    'Link': game_link,
+                                    'Image': image_path,
+                                    'Availability': date_period
+                                })
+                            else:
+                                image_path = existing_game.get('Image')
 
-            image_url = card.find_element(By.XPATH, './/img[@data-testid="picture-image"]').get_attribute('src')
-            availability = card.find_element(By.CSS_SELECTOR, 'p > span').text.strip().replace("Free ", "")
+                            # Track current games for notifications
+                            current_games.append({
+                                'Name': game_title,
+                                'Link': game_link,
+                                'Image': image_path,
+                                'Availability': date_period
+                            })
 
-            # Save image with dynamic filename
-            image_filename = f"next-game{next_game_counter}.jpg"
-            image_path = os.path.join('output/images', image_filename)
-            response = requests.get(image_url)
-            with open(image_path, 'wb') as img_file:
-                img_file.write(response.content)
+            # Check upcoming promotions (free later)
+            upcoming_offers = game['promotions'].get('upcomingPromotionalOffers', [])
+            if upcoming_offers and len(upcoming_offers) > 0:
+                for offer_group in upcoming_offers:
+                    for offer in offer_group.get('promotionalOffers', []):
+                        # Only process if it will be free (100% discount)
+                        if offer['discountSetting']['discountPercentage'] == 0:
+                            image_url = get_game_image_url(game)
+                            availability = f"{format_date(offer['startDate'])} - {format_date(offer['endDate'])}"
 
-            existing_next_game_images.append(image_filename)
-            next_game_counter += 1
+                            # Save image with dynamic filename
+                            next_game_counter = len(next_games) + 1
+                            image_filename = f"next-game{next_game_counter}.jpg" if next_game_counter > 1 else "next-game.jpg"
+                            image_path = os.path.join('output/images', image_filename)
 
-            # Add to next games
-            next_games.append({
-                'Name': game_name,
-                'Link': game_link,
-                'Image': image_path,
-                'Availability': availability
-            })
+                            if image_url:
+                                try:
+                                    img_response = requests.get(image_url, timeout=10)
+                                    img_response.raise_for_status()
+                                    with open(image_path, 'wb') as img_file:
+                                        img_file.write(img_response.content)
+                                    print(f"Downloaded image for upcoming game: {game_title}")
+                                except Exception as e:
+                                    print(f"Failed to download image for {game_title}: {e}")
+
+                            existing_next_game_images.append(image_filename)
+
+                            # Add to next games
+                            next_games.append({
+                                'Name': game_title,
+                                'Link': game_link,
+                                'Image': image_path,
+                                'Availability': availability
+                            })
+
+        print(f"Found {len(current_games)} current free games")
+        print(f"Found {len(next_games)} upcoming free games")
 
         # Cleanup old next-game images
         for filename in os.listdir('output/images'):
@@ -189,7 +237,7 @@ def scrape_epic_free_games():
                         else:
                             print(f"No valid image found for {game['Name']}. Image will not be attached.")
                             image_path = None  # Ensure no invalid image is passed
-                            
+
                         # Send the notification
                         send_pushover_notification(
                             user_key,
@@ -198,7 +246,7 @@ def scrape_epic_free_games():
                             message=f"{game['Name']} is free on Epic Games Store!\nAvailability: {game['Availability']}",
                             image_path=image_path
                         )
-                    
+
                 elif new_games:
                     print(f"New games detected: {new_games}")
                     for new_game in new_games:
@@ -210,7 +258,7 @@ def scrape_epic_free_games():
                             else:
                                 print(f"No valid image found for {new_game}. Image will not be attached.")
                                 image_path = None
-                                
+
                             send_pushover_notification(
                                 user_key,
                                 app_token,
@@ -218,7 +266,6 @@ def scrape_epic_free_games():
                                 message=f"{new_game} is now free on Epic Games Store!\nAvailability: {game_data['Availability']}",
                                 image_path=image_path
                             )
-                            
 
         # Save updated JSON
         updated_data = {
@@ -232,10 +279,8 @@ def scrape_epic_free_games():
 
     except Exception as e:
         print(f"An error occurred: {e}")
-
-    finally:
-        driver.quit()
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
     scrape_epic_free_games()
-    
