@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Fetch images for historical games that don't have them.
-Uses Epic Games Content API to retrieve game images.
+Uses Epic Games Content API as primary source and Google Images (via Jina AI) as fallback.
 
 MANUAL FALLBACK FOR MISSING IMAGES:
-If a game's image can't be found via the API, you can manually search using:
+If a game's image can't be found automatically, you can manually search using:
   Google Images: site:store.epicgames.com [game name]
 
 Filter results by aspect ratio to get proper hero/banner images (landscape, not square).
@@ -15,7 +15,8 @@ import requests
 import os
 import time
 import re
-from urllib.parse import quote_plus
+import json
+from urllib.parse import quote, quote_plus
 from db_manager import DatabaseManager
 
 def get_image_from_epic_api(product_slug, url_slug):
@@ -87,23 +88,23 @@ def get_image_from_epic_api(product_slug, url_slug):
 def get_image_from_google(game_name):
     """
     Search Google Images for game images from store.epicgames.com.
-    Uses Jina AI reader to parse Google search results.
+    Uses Jina AI to parse Google Images search results (bypasses bot detection).
     Filters by aspect ratio to get proper hero/banner images.
     Returns image URL if found, None otherwise.
     """
-
-    # Construct Google Images search query
-    search_query = f"site:store.epicgames.com {game_name}"
-    encoded_query = quote_plus(search_query)
-
-    # Use Jina AI reader to parse Google Images search
-    jina_url = f"https://r.jina.ai/https://www.google.com/search?q={encoded_query}&tbm=isch"
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
 
     try:
+        # Construct Google Images search query
+        search_query = f"site:store.epicgames.com {game_name}"
+        encoded_query = quote_plus(search_query)
+
+        # Use Jina AI to parse Google Images search
+        jina_url = f"https://r.jina.ai/https://www.google.com/search?q={encoded_query}&tbm=isch"
+
         response = requests.get(jina_url, headers=headers, timeout=15)
 
         if response.status_code != 200:
@@ -142,7 +143,6 @@ def get_image_from_google(game_name):
         print(f"    Found {len(unique_urls)} potential image URLs")
 
         # Try to filter by aspect ratio and quality indicators
-        # We want landscape images (game hero/banner images)
         for url in unique_urls[:15]:  # Check first 15 images
             try:
                 # Check URL for quality indicators first
@@ -197,7 +197,7 @@ def get_image_from_google(game_name):
             return unique_urls[0]
 
     except Exception as e:
-        print(f"    Error searching via Jina: {e}")
+        print(f"    Error searching Google Images via Jina: {e}")
         return None
 
     return None
