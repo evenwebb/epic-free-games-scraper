@@ -1,0 +1,112 @@
+name: Scrape Epic Games and Deploy to GitHub Pages
+
+on:
+  # Run every 6 hours
+  schedule:
+    - cron: '0 */6 * * *'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+  # Run on push to main (for testing)
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  scrape-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get full history to preserve database
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Check if database exists
+        id: check_db
+        run: |
+          if [ -f "output/epic_games.db" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run initial migration (first time only)
+        if: steps.check_db.outputs.exists == 'false'
+        run: |
+          echo "No database found. Running initial migration..."
+          python3 migrate_historical_data.py
+          echo "Migration complete!"
+
+      - name: Run scraper
+        run: |
+          echo "Running Epic Games scraper..."
+          python3 scrape_epic_games.py
+          echo "Scraper complete!"
+
+      - name: Generate website
+        run: |
+          echo "Generating static website..."
+          python3 generate_website.py
+          echo "Website generation complete!"
+
+      - name: Commit database updates
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # Add database and images
+          git add output/epic_games.db
+          git add output/images/*.jpg output/images/*.png 2>/dev/null || true
+          git add output/free_games.json
+
+          # Commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No database changes to commit"
+          else
+            git commit -m "Update database and images - $(date -u +"%Y-%m-%d %H:%M UTC")"
+            git push
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './website'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Report status
+        if: always()
+        run: |
+          echo "### 🎮 Epic Games Scraper Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time**: $(date -u +"%Y-%m-%d %H:%M UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database**: Updated" >> $GITHUB_STEP_SUMMARY
+          echo "- **Website**: Deployed to GitHub Pages" >> $GITHUB_STEP_SUMMARY

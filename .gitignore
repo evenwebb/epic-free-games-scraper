@@ -2,9 +2,30 @@
 __pycache__/
 *.pyc
 *.pyo
+*.py[cod]
+*$py.class
 
-# Ignore Docker volumes
-output/
+# Virtual environments
+venv/
+env/
+ENV/
 
-# Ignore logs
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
 *.log
+
+# Ignore settings with sensitive data (optional)
+# settings.json
+
+# DO NOT ignore output directory - we need it for GitHub Actions
+# The database and images need to be committed
+# output/

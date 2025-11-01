@@ -1,0 +1,348 @@
+/* Epic Games Free Games History - Main Styles */
+
+:root {
+    /* Epic Games color scheme */
+    --color-primary: #0078f2;
+    --color-primary-dark: #0066cc;
+    --color-background: #0a0a0a;
+    --color-surface: #1a1a1a;
+    --color-surface-light: #2a2a2a;
+    --color-text: #ffffff;
+    --color-text-muted: #a0a0a0;
+    --color-border: #333333;
+    --color-success: #0db060;
+    --color-warning: #ff9800;
+
+    /* Platform colors */
+    --color-pc: #0078f2;
+    --color-ios: #999999;
+    --color-android: #3ddc84;
+
+    /* Spacing */
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+    --spacing-xxl: 3rem;
+
+    /* Border radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+}
+
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--color-background);
+    color: var(--color-text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 var(--spacing-lg);
+}
+
+/* Header */
+.site-header {
+    background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-background) 100%);
+    padding: var(--spacing-xxl) 0;
+    text-align: center;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.site-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-sm);
+    background: linear-gradient(135deg, var(--color-primary) 0%, #00d4ff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.subtitle {
+    color: var(--color-text-muted);
+    font-size: 1.125rem;
+    margin-bottom: var(--spacing-sm);
+}
+
+.last-updated {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+}
+
+/* Hero Section - Current Free Games */
+.hero-section {
+    background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-background) 100%);
+    padding: var(--spacing-xxl) 0;
+}
+
+.hero-section h2 {
+    font-size: 2rem;
+    margin-bottom: var(--spacing-xl);
+    text-align: center;
+}
+
+.current-games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-xl);
+}
+
+.hero-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.hero-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 120, 242, 0.2);
+}
+
+.hero-card-image {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--color-surface-light);
+}
+
+.hero-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.hero-card-image .no-image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: var(--color-text-muted);
+}
+
+.hero-card-content {
+    padding: var(--spacing-lg);
+}
+
+.hero-card-content h3 {
+    font-size: 1.25rem;
+    margin-bottom: var(--spacing-md);
+}
+
+.countdown {
+    color: var(--color-warning);
+    font-size: 0.875rem;
+    margin-bottom: var(--spacing-md);
+    font-weight: 600;
+}
+
+.cta-button {
+    display: inline-block;
+    background: var(--color-primary);
+    color: white;
+    padding: var(--spacing-md) var(--spacing-xl);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    font-weight: 600;
+    transition: background 0.2s;
+    text-align: center;
+    width: 100%;
+}
+
+.cta-button:hover {
+    background: var(--color-primary-dark);
+}
+
+/* Platform Badges - PC only */
+.platform-badge {
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--color-pc);
+}
+
+/* Statistics Section */
+.stats-section {
+    padding: var(--spacing-xxl) 0;
+}
+
+.stats-section h2 {
+    font-size: 2rem;
+    margin-bottom: var(--spacing-xl);
+    text-align: center;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xxl);
+}
+
+.stat-card {
+    background: var(--color-surface);
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.stat-label {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.chart-container {
+    background: var(--color-surface);
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Search Section */
+.search-section {
+    background: var(--color-surface);
+    padding: var(--spacing-xl) 0;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.search-controls {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: var(--spacing-md);
+}
+
+.search-input,
+.filter-select {
+    padding: var(--spacing-md);
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    font-size: 1rem;
+    font-family: inherit;
+}
+
+.search-input:focus,
+.filter-select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+/* Timeline Section */
+.timeline-section {
+    padding: var(--spacing-xxl) 0;
+}
+
+.timeline-section h2 {
+    font-size: 2rem;
+    margin-bottom: var(--spacing-xl);
+    text-align: center;
+}
+
+.loading {
+    text-align: center;
+    padding: var(--spacing-xxl);
+    color: var(--color-text-muted);
+}
+
+.no-results {
+    text-align: center;
+    padding: var(--spacing-xxl);
+    color: var(--color-text-muted);
+    font-size: 1.125rem;
+}
+
+.no-games {
+    text-align: center;
+    color: var(--color-text-muted);
+    padding: var(--spacing-xl);
+}
+
+
+/* Footer */
+.site-footer {
+    background: var(--color-surface);
+    padding: var(--spacing-xxl) 0;
+    text-align: center;
+    border-top: 1px solid var(--color-border);
+    margin-top: var(--spacing-xxl);
+}
+
+.site-footer p {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    margin-bottom: var(--spacing-sm);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .site-header h1 {
+        font-size: 1.75rem;
+    }
+
+    .hero-section h2,
+    .stats-section h2,
+    .timeline-section h2 {
+        font-size: 1.5rem;
+    }
+
+    .current-games-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .search-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .stat-number {
+        font-size: 2rem;
+    }
+}
+
+/* Utility Classes */
+.text-center {
+    text-align: center;
+}
+
+.mb-lg {
+    margin-bottom: var(--spacing-lg);
+}
+
+.mt-lg {
+    margin-top: var(--spacing-lg);
+}

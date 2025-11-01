@@ -2,6 +2,7 @@ import json
 import os
 import requests
 from datetime import datetime, timezone
+from db_manager import DatabaseManager
 
 def load_settings():
     """Load settings from the external JSON file."""
@@ -88,6 +89,9 @@ def scrape_epic_free_games():
     app_token = settings.get("pushover", {}).get("app_token", "")
     notify_always = settings.get("pushover", {}).get("notify_always", False)
 
+    # Initialize database
+    db = DatabaseManager()
+
     # Paths
     json_file = 'output/free_games.json'
     os.makedirs('output/images', exist_ok=True)
@@ -105,6 +109,9 @@ def scrape_epic_free_games():
     current_games = []  # Track current free games for notifications
 
     try:
+        # Update promotion statuses in database
+        db.update_promotion_status()
+
         # Fetch free games from Epic Games API
         api_url = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US'
         print("Fetching free games from Epic Games API...")
@@ -142,26 +149,46 @@ def scrape_epic_free_games():
                             game_id = game.get('id', game_link.split('/')[-1])
                             date_period = f"Free Now - {format_date(offer['endDate'])}"
 
-                            # Check for duplicates
+                            # Save image
+                            image_filename = None
+                            if image_url:
+                                image_filename = f"{game_id}.jpg"
+                                image_path = os.path.join('output/images', image_filename)
+                                try:
+                                    img_response = requests.get(image_url, timeout=10)
+                                    img_response.raise_for_status()
+                                    with open(image_path, 'wb') as img_file:
+                                        img_file.write(img_response.content)
+                                    print(f"Downloaded image for {game_title}")
+                                except Exception as e:
+                                    print(f"Failed to download image for {game_title}: {e}")
+                                    image_filename = None
+                                    image_path = None
+                            else:
+                                image_path = None
+
+                            # Insert or update game in database
+                            game_db_id = db.insert_or_update_game(
+                                epic_id=game_id,
+                                name=game_title,
+                                link=game_link,
+                                platform='PC',
+                                image_filename=image_filename
+                            )
+
+                            # Insert promotion in database
+                            db.insert_promotion(
+                                game_id=game_db_id,
+                                start_date=offer['startDate'],
+                                end_date=offer['endDate'],
+                                status='current',
+                                platform='PC'
+                            )
+
+                            # Check for duplicates in JSON
                             existing_game = next((g for g in past_games if g['Link'] == game_link), None)
                             if not existing_game:
                                 new_games.append(game_title)
-
-                                # Save image
-                                if image_url:
-                                    image_filename = f"{game_id}.jpg"
-                                    image_path = os.path.join('output/images', image_filename)
-                                    try:
-                                        img_response = requests.get(image_url, timeout=10)
-                                        img_response.raise_for_status()
-                                        with open(image_path, 'wb') as img_file:
-                                            img_file.write(img_response.content)
-                                        print(f"Downloaded image for {game_title}")
-                                    except Exception as e:
-                                        print(f"Failed to download image for {game_title}: {e}")
-                                        image_path = None
-                                else:
-                                    image_path = None
 
                                 # Add to past games
                                 past_games.append({
@@ -205,8 +232,27 @@ def scrape_epic_free_games():
                                     print(f"Downloaded image for upcoming game: {game_title}")
                                 except Exception as e:
                                     print(f"Failed to download image for {game_title}: {e}")
+                                    image_filename = None
 
-                            existing_next_game_images.append(image_filename)
+                            # Insert or update game in database
+                            game_db_id = db.insert_or_update_game(
+                                epic_id=game.get('id', game_link.split('/')[-1]),
+                                name=game_title,
+                                link=game_link,
+                                platform='PC',
+                                image_filename=image_filename
+                            )
+
+                            # Insert promotion in database
+                            db.insert_promotion(
+                                game_id=game_db_id,
+                                start_date=offer['startDate'],
+                                end_date=offer['endDate'],
+                                status='upcoming',
+                                platform='PC'
+                            )
+
+                            existing_next_game_images.append(image_filename if image_filename else f"next-game{next_game_counter}.jpg" if next_game_counter > 1 else "next-game.jpg")
 
                             # Add to next games
                             next_games.append({
@@ -277,10 +323,35 @@ def scrape_epic_free_games():
 
         print(f"Data scraped successfully. Updated data saved to {json_file}")
 
+        # Record scrape run in database
+        db.record_scrape_run(
+            games_found=len(games),
+            new_games=len(new_games),
+            current=len(current_games),
+            upcoming=len(next_games),
+            success=True
+        )
+
+        # Update statistics cache
+        db.update_statistics_cache()
+
     except Exception as e:
         print(f"An error occurred: {e}")
         import traceback
         traceback.print_exc()
+
+        # Record failed scrape run in database
+        try:
+            db.record_scrape_run(
+                games_found=0,
+                new_games=0,
+                current=0,
+                upcoming=0,
+                success=False,
+                error=str(e)
+            )
+        except:
+            pass  # Don't fail if database recording fails
 
 if __name__ == '__main__':
     scrape_epic_free_games()
