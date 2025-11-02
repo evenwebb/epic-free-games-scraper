@@ -336,6 +336,8 @@ def download_image(image_url, game_id):
 def fetch_historical_images(limit=None, delay=0.5):
     """
     Fetch images for games that don't have them.
+    Stops after 80 Google searches or when rate limited (429).
+    Designed to be run multiple times until all images are fetched.
 
     Args:
         limit: Maximum number of games to process (None for all)
@@ -344,6 +346,7 @@ def fetch_historical_images(limit=None, delay=0.5):
 
     print("=" * 60)
     print("Historical Images Fetcher")
+    print("Fetches up to 80 images from Google per run")
     print("=" * 60)
 
     db = DatabaseManager()
@@ -361,7 +364,7 @@ def fetch_historical_images(limit=None, delay=0.5):
 
     games_without_images = [dict(game) for game in games]
 
-    print(f"\nFound {len(games_without_images)} games without images")
+    print(f"\nFound {len(games_without_images)} games without images in database")
 
     if limit:
         games_without_images = games_without_images[:limit]
@@ -369,7 +372,7 @@ def fetch_historical_images(limit=None, delay=0.5):
 
     if not games_without_images:
         print("All games already have images!")
-        return
+        return 0  # Return 0 successful downloads
 
     successful = 0
     failed = 0
@@ -406,16 +409,24 @@ def fetch_historical_images(limit=None, delay=0.5):
                 used_google = True
                 google_request_count += 1
 
-                # If we hit rate limit, stop future Google searches
+                # If we hit rate limit, stop the entire script
                 if rate_limited:
                     google_rate_limited = True
-                    print(f"  ⚠️  Google rate limit detected - will skip Google for remaining games")
+                    print(f"  ⚠️  Google rate limit detected (429) - stopping script")
+                    print(f"  💡 Run this script again later to continue fetching images")
+                    break  # Exit the loop immediately
 
                 if image_url:
                     print(f"  ✓ Found image URL from Google Images")
                 else:
-                    if not rate_limited:
-                        print(f"  ✗ No image found in Google Images either")
+                    print(f"  ✗ No image found in Google Images either")
+
+                # Check if we've hit the Google search limit
+                if google_request_count >= GOOGLE_SEARCH_LIMIT:
+                    print(f"  ⚠️  Reached Google search limit ({GOOGLE_SEARCH_LIMIT}) - stopping script")
+                    print(f"  💡 Run this script again later to continue fetching images")
+                    google_rate_limited = True
+                    break  # Exit the loop
             else:
                 print(f"  ⏭️  Skipping Google search (rate limited)")
 
@@ -456,14 +467,17 @@ def fetch_historical_images(limit=None, delay=0.5):
     print(f"  Successfully fetched: {successful} images")
     print(f"  Skipped (already exist): {skipped} images")
     print(f"  Failed: {failed} games")
-    print(f"  Google searches made: {google_request_count}")
+    print(f"  Google searches made: {google_request_count}/{GOOGLE_SEARCH_LIMIT}")
     if google_rate_limited:
-        print(f"  ⚠️  Google rate limit was hit during execution")
-    print(f"  Total processed: {len(games_without_images)} games")
+        print(f"  ⚠️  Stopped due to Google limit - run again later")
+    print(f"  Total processed: {i}/{len(games_without_images)} games")
     print("=" * 60)
+
+    return successful
 
 if __name__ == '__main__':
     import sys
+    import subprocess
 
     # Allow limiting number of games to process
     limit = None
@@ -474,4 +488,43 @@ if __name__ == '__main__':
         except:
             pass
 
-    fetch_historical_images(limit=limit, delay=0.5)
+    # Run the image fetcher
+    successful_count = fetch_historical_images(limit=limit, delay=0.5)
+
+    # If we downloaded new images, push them to GitHub
+    if successful_count > 0:
+        print("\n" + "=" * 60)
+        print(f"Pushing {successful_count} new images to GitHub...")
+        print("=" * 60)
+
+        try:
+            # Add images to git
+            subprocess.run(['git', 'add', 'output/images/'], check=True)
+            subprocess.run(['git', 'add', 'output/epic_games.db'], check=True)
+
+            # Create commit message
+            commit_msg = f"Add {successful_count} new game images\n\n🤖 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+
+            # Commit
+            result = subprocess.run(['git', 'commit', '-m', commit_msg], capture_output=True, text=True)
+
+            if result.returncode == 0:
+                print("✓ Committed new images")
+
+                # Push to GitHub
+                subprocess.run(['git', 'push'], check=True)
+                print("✓ Pushed to GitHub successfully!")
+            else:
+                if "nothing to commit" in result.stdout:
+                    print("No changes to commit (images may already be committed)")
+                else:
+                    print(f"Commit failed: {result.stderr}")
+
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️  Git operation failed: {e}")
+            print("You may need to manually commit and push the images")
+        except Exception as e:
+            print(f"⚠️  Error: {e}")
+
+    else:
+        print("\nNo new images downloaded, skipping git push")
