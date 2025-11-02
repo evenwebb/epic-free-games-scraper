@@ -5,6 +5,12 @@
             "Link": "https://store.epicgames.com/en-US/p/idle-champions-of-the-forgotten-realms",
             "Image": "output/images/next-game.jpg",
             "Availability": "Nov 06 at 04:00 PM - Nov 13 at 04:00 PM"
+        },
+        {
+            "Name": "Felix The Reaper",
+            "Link": "https://store.epicgames.com/en-US/p/0724c3f1aac0495a85d5a952931b4167",
+            "Image": "output/images/next-game2.jpg",
+            "Availability": "Nov 06 at 04:00 PM - Nov 13 at 04:00 PM"
         }
     ],
     "Past Games": [
