@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Fetch images for historical games that don't have them.
-Uses Epic Games Content API as primary source and Google Images (via Jina AI) as fallback.
+Uses Epic Games Content API as primary source and Google Images as fallback.
 
 MANUAL FALLBACK FOR MISSING IMAGES:
 If a game's image can't be found automatically, you can manually search using:
@@ -16,8 +16,28 @@ import os
 import time
 import re
 import json
+import random
 from urllib.parse import quote, quote_plus
 from db_manager import DatabaseManager
+
+# User agents for rotation to avoid bot detection
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0'
+]
+
+# Google search rate limiting
+GOOGLE_SEARCH_LIMIT = 80  # Stop using Google after this many searches
+GOOGLE_SEARCH_DELAY_MIN = 2  # Minimum seconds between Google requests
+GOOGLE_SEARCH_DELAY_MAX = 5  # Maximum seconds between Google requests
 
 def get_image_from_epic_api(product_slug, url_slug):
     """
@@ -85,40 +105,69 @@ def get_image_from_epic_api(product_slug, url_slug):
 
     return None
 
-def get_image_from_google(game_name):
+def get_image_from_google(game_name, google_request_count=0):
     """
     Search Google Images for game images from store.epicgames.com.
-    Uses Jina AI to parse Google Images search results (bypasses bot detection).
+    Directly scrapes Google Images HTML to extract image URLs.
     Filters by aspect ratio to get proper hero/banner images.
-    Returns image URL if found, None otherwise.
+
+    Args:
+        game_name: Name of the game to search for
+        google_request_count: Number of Google searches made so far (for rate limiting)
+
+    Returns tuple: (image_url, rate_limited)
+        - image_url: URL if found, None otherwise
+        - rate_limited: True if Google returned 429, False otherwise
     """
 
+    # Check if we've hit the Google search limit
+    if google_request_count >= GOOGLE_SEARCH_LIMIT:
+        print(f"    Google search limit reached ({GOOGLE_SEARCH_LIMIT}), skipping")
+        return None, False
+
+    # Rotate user agent to avoid detection
+    user_agent = random.choice(USER_AGENTS)
+
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': user_agent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
     }
 
     try:
         # Construct Google Images search query
-        search_query = f"site:store.epicgames.com {game_name}"
+        search_query = f"store.epicgames.com {game_name}"
         encoded_query = quote_plus(search_query)
 
-        # Use Jina AI to parse Google Images search
-        jina_url = f"https://r.jina.ai/https://www.google.com/search?q={encoded_query}&tbm=isch"
+        # Direct Google Images request
+        google_url = f"https://www.google.com/search?q={encoded_query}&tbm=isch"
 
-        response = requests.get(jina_url, headers=headers, timeout=15)
+        response = requests.get(google_url, headers=headers, timeout=15)
+
+        if response.status_code == 429:
+            print(f"    ⚠️  Google rate limit hit (429) - stopping Google searches")
+            return None, True
 
         if response.status_code != 200:
-            print(f"    Jina AI returned status {response.status_code}")
-            return None
+            print(f"    Google returned status {response.status_code}")
+            return None, False
 
-        # Parse the readable content from Jina
+        # Parse HTML content
         content = response.text
 
-        # Look for Epic Games image URLs in the content
+        # Look for Epic Games image URLs in the HTML
+        # Google embeds image data in JavaScript, look for various patterns
         patterns = [
-            r'(https://cdn[0-9]*\.epicgames\.com/[^\s\)]+\.(?:jpg|jpeg|png|webp))',
-            r'(https://[^\s]*epicstatic\.com/[^\s\)]+\.(?:jpg|jpeg|png|webp))',
-            r'(https://[^\s]*\.ak\.epicgames\.com/[^\s\)]+\.(?:jpg|jpeg|png|webp))'
+            r'"(https://cdn[0-9]*\.epicgames\.com/[^"]+\.(?:jpg|jpeg|png|webp))"',
+            r'"(https://[^"]*epicstatic\.com/[^"]+\.(?:jpg|jpeg|png|webp))"',
+            r'"(https://[^"]*\.ak\.epicgames\.com/[^"]+\.(?:jpg|jpeg|png|webp))"',
+            r'\["(https://cdn[0-9]*\.epicgames\.com/[^"]+\.(?:jpg|jpeg|png|webp))',
+            r'\["(https://[^"]*epicstatic\.com/[^"]+\.(?:jpg|jpeg|png|webp))',
+            r'\["(https://[^"]*\.ak\.epicgames\.com/[^"]+\.(?:jpg|jpeg|png|webp))'
         ]
 
         image_urls = []
@@ -127,14 +176,15 @@ def get_image_from_google(game_name):
             image_urls.extend(matches)
 
         if not image_urls:
-            print(f"    No image URLs found in Jina response")
-            return None
+            print(f"    No image URLs found in Google response")
+            return None, False
 
         # Remove duplicates while preserving order
         seen = set()
         unique_urls = []
         for url in image_urls:
-            # Clean up URL (remove trailing characters)
+            # Clean up URL (remove trailing characters and escape sequences)
+            url = url.replace('\\u003d', '=').replace('\\u0026', '&')
             url = url.rstrip('.,;)')
             if url not in seen and len(url) > 20:
                 seen.add(url)
@@ -175,10 +225,10 @@ def get_image_from_google(game_name):
                     # Look for landscape images (16:9 to 21:9 range approximately)
                     if 1.5 <= aspect_ratio <= 2.5 and width >= 800:
                         print(f"    Found suitable image: {width}x{height} (ratio: {aspect_ratio:.2f})")
-                        return url
+                        return url, False
                     elif has_good_indicator and width >= 600:
                         print(f"    Found image with good URL indicator: {width}x{height}")
-                        return url
+                        return url, False
 
             except Exception as e:
                 # Skip this image and try next
@@ -189,18 +239,18 @@ def get_image_from_google(game_name):
             if any(indicator in url.lower() for indicator in
                    ['1920', '1280', 'carousel', 'hero', 'featured', 'keyart']):
                 print(f"    Using URL with quality indicator")
-                return url
+                return url, False
 
         # Last resort: return first URL
         if unique_urls:
             print(f"    Using first available URL")
-            return unique_urls[0]
+            return unique_urls[0], False
 
     except Exception as e:
-        print(f"    Error searching Google Images via Jina: {e}")
-        return None
+        print(f"    Error searching Google Images: {e}")
+        return None, False
 
-    return None
+    return None, False
 
 def get_png_dimensions(png_data):
     """Extract dimensions from PNG data. Returns (width, height) or (None, None)."""
@@ -323,26 +373,51 @@ def fetch_historical_images(limit=None, delay=0.5):
 
     successful = 0
     failed = 0
+    skipped = 0
+    google_request_count = 0  # Track Google searches for rate limiting
+    google_rate_limited = False  # Flag to stop Google searches after 429
 
     for i, game in enumerate(games_without_images, 1):
         print(f"\n[{i}/{len(games_without_images)}] {game['name']}")
 
+        # Check if image file already exists on disk
+        if game.get('image_filename'):
+            image_path = os.path.join('output/images', game['image_filename'])
+            if os.path.exists(image_path):
+                print(f"  ⏭️  Image already exists: {game['image_filename']}")
+                skipped += 1
+                continue
+
         # Try to fetch image URL from Epic API first
         image_url = get_image_from_epic_api(game['product_slug'], game['url_slug'])
+        used_google = False
 
         if image_url:
             print(f"  ✓ Found image URL from Epic API")
         else:
             print(f"  ✗ No image found in Epic API")
-            print(f"  → Trying Google Images search via Jina AI...")
 
-            # Fallback to Google Images search
-            image_url = get_image_from_google(game['name'])
+            # Only try Google if not rate limited yet
+            if not google_rate_limited:
+                print(f"  → Trying Google Images search... (Google requests: {google_request_count}/{GOOGLE_SEARCH_LIMIT})")
 
-            if image_url:
-                print(f"  ✓ Found image URL from Google Images")
+                # Fallback to Google Images search
+                image_url, rate_limited = get_image_from_google(game['name'], google_request_count)
+                used_google = True
+                google_request_count += 1
+
+                # If we hit rate limit, stop future Google searches
+                if rate_limited:
+                    google_rate_limited = True
+                    print(f"  ⚠️  Google rate limit detected - will skip Google for remaining games")
+
+                if image_url:
+                    print(f"  ✓ Found image URL from Google Images")
+                else:
+                    if not rate_limited:
+                        print(f"  ✗ No image found in Google Images either")
             else:
-                print(f"  ✗ No image found in Google Images either")
+                print(f"  ⏭️  Skipping Google search (rate limited)")
 
         if image_url:
             # Download image
@@ -367,14 +442,23 @@ def fetch_historical_images(limit=None, delay=0.5):
         else:
             failed += 1
 
-        # Be respectful to servers
-        if delay > 0 and i < len(games_without_images):
+        # Add delay after Google searches to avoid rate limiting
+        if used_google and i < len(games_without_images):
+            delay_time = random.uniform(GOOGLE_SEARCH_DELAY_MIN, GOOGLE_SEARCH_DELAY_MAX)
+            print(f"  ⏳ Waiting {delay_time:.1f}s before next request...")
+            time.sleep(delay_time)
+        # Be respectful to Epic servers
+        elif delay > 0 and i < len(games_without_images):
             time.sleep(delay)
 
     print("\n" + "=" * 60)
     print(f"Complete!")
     print(f"  Successfully fetched: {successful} images")
+    print(f"  Skipped (already exist): {skipped} images")
     print(f"  Failed: {failed} games")
+    print(f"  Google searches made: {google_request_count}")
+    if google_rate_limited:
+        print(f"  ⚠️  Google rate limit was hit during execution")
     print(f"  Total processed: {len(games_without_images)} games")
     print("=" * 60)
 
