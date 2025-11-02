@@ -98,7 +98,7 @@ def generate_html(data):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Epic Games Free Games History - {stats['totalGames']}+ Free Games Since 2018</title>
+    <title>Epic Games Free Games History - Tracking {stats['totalGames']}+ Free Games Since 2018</title>
     <meta name="description" content="Complete history of free PC games given away by Epic Games Store since 2018. Track {stats['totalGames']}+ games.">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/timeline.css">
