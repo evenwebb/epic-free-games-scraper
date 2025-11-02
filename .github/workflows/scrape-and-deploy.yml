@@ -60,18 +60,32 @@ jobs:
           echo "Migration complete!"
 
       - name: Run scraper
+        id: scraper
         run: |
           echo "Running Epic Games scraper..."
           python3 scrape_epic_games.py
           echo "Scraper complete!"
 
+      - name: Check for database changes
+        id: check_changes
+        run: |
+          if git diff --quiet output/epic_games.db output/images/ output/free_games.json 2>/dev/null; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No database or image changes detected"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Database or images changed, will regenerate website"
+          fi
+
       - name: Generate website
+        if: steps.check_changes.outputs.changed == 'true'
         run: |
           echo "Generating static website..."
           python3 generate_website.py
           echo "Website generation complete!"
 
       - name: Commit database updates
+        if: steps.check_changes.outputs.changed == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
@@ -90,14 +104,17 @@ jobs:
           fi
 
       - name: Setup Pages
+        if: steps.check_changes.outputs.changed == 'true'
         uses: actions/configure-pages@v4
 
       - name: Upload artifact
+        if: steps.check_changes.outputs.changed == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: './website'
 
       - name: Deploy to GitHub Pages
+        if: steps.check_changes.outputs.changed == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
 
@@ -108,5 +125,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Time**: $(date -u +"%Y-%m-%d %H:%M UTC")" >> $GITHUB_STEP_SUMMARY
-          echo "- **Database**: Updated" >> $GITHUB_STEP_SUMMARY
-          echo "- **Website**: Deployed to GitHub Pages" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.check_changes.outputs.changed }}" == "true" ]; then
+            echo "- **Changes**: Database/images updated" >> $GITHUB_STEP_SUMMARY
+            echo "- **Website**: Regenerated and deployed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Changes**: No changes detected" >> $GITHUB_STEP_SUMMARY
+            echo "- **Website**: Deployment skipped (no changes)" >> $GITHUB_STEP_SUMMARY
+          fi

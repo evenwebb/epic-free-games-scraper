@@ -242,6 +242,7 @@ class DatabaseManager:
                     FROM games g
                     JOIN promotions p ON g.id = p.game_id
                     WHERE p.status = 'current' AND g.platform = ?
+                    GROUP BY g.id
                     ORDER BY p.start_date DESC
                 """, (platform,))
             else:
@@ -250,6 +251,7 @@ class DatabaseManager:
                     FROM games g
                     JOIN promotions p ON g.id = p.game_id
                     WHERE p.status = 'current'
+                    GROUP BY g.id
                     ORDER BY g.platform, p.start_date DESC
                 """)
 
@@ -266,6 +268,7 @@ class DatabaseManager:
                     FROM games g
                     JOIN promotions p ON g.id = p.game_id
                     WHERE p.status = 'upcoming' AND g.platform = ?
+                    GROUP BY g.id
                     ORDER BY p.start_date ASC
                 """, (platform,))
             else:
@@ -274,6 +277,7 @@ class DatabaseManager:
                     FROM games g
                     JOIN promotions p ON g.id = p.game_id
                     WHERE p.status = 'upcoming'
+                    GROUP BY g.id
                     ORDER BY p.start_date ASC
                 """)
 
