@@ -39,6 +39,87 @@ GOOGLE_SEARCH_LIMIT = 80  # Stop using Google after this many searches
 GOOGLE_SEARCH_DELAY_MIN = 2  # Minimum seconds between Google requests
 GOOGLE_SEARCH_DELAY_MAX = 5  # Maximum seconds between Google requests
 
+def normalize_to_slug(text):
+    """
+    Convert text to a slug format for comparison.
+    Example: "Amnesia: The Bunker" -> "amnesia-the-bunker"
+    """
+    if not text:
+        return ""
+
+    # Convert to lowercase
+    slug = text.lower()
+
+    # Remove special characters and replace with hyphen or space
+    slug = re.sub(r'[^\w\s-]', '', slug)
+
+    # Replace multiple spaces/hyphens with single hyphen
+    slug = re.sub(r'[\s_-]+', '-', slug)
+
+    # Strip leading/trailing hyphens
+    slug = slug.strip('-')
+
+    return slug
+
+def validate_image_url(image_url, game_name):
+    """
+    Validate that the image URL likely matches the game name.
+    Extracts slug from URL and checks if game name slug appears in it.
+
+    Examples:
+        URL: "https://cdn1.epicgames.com/.../amnesia-the-bunker-1x2n7.png"
+        Game: "Amnesia: The Bunker"
+        Result: True (slug match: "amnesia-the-bunker")
+
+        URL: "https://cdn1.epicgames.com/.../some-other-game.png"
+        Game: "Amnesia: The Bunker"
+        Result: False (no match)
+
+    Args:
+        image_url: The image URL to validate
+        game_name: The game name to match against
+
+    Returns:
+        bool: True if validation passes, False otherwise
+    """
+    if not image_url or not game_name:
+        return False
+
+    # Normalize game name to slug
+    game_slug = normalize_to_slug(game_name)
+
+    # Extract filename from URL
+    try:
+        filename = image_url.split('/')[-1].split('?')[0]  # Get filename without query params
+        filename_slug = normalize_to_slug(filename.rsplit('.', 1)[0])  # Remove extension
+    except Exception:
+        return False
+
+    # Check if game slug appears in filename slug
+    if game_slug in filename_slug:
+        return True
+
+    # For longer game names, check if significant portion matches
+    # Split both into words and check overlap
+    game_words = set(game_slug.split('-'))
+    filename_words = set(filename_slug.split('-'))
+
+    # Remove common words that don't help with matching
+    common_words = {'the', 'a', 'an', 'of', 'and', 'or', 'edition', 'game', 'digital', 'pack'}
+    game_words = game_words - common_words
+    filename_words = filename_words - common_words
+
+    # If no significant words left, fail
+    if not game_words:
+        return False
+
+    # Calculate overlap percentage
+    overlap = len(game_words & filename_words)
+    overlap_pct = overlap / len(game_words)
+
+    # Consider valid if >50% of significant words match
+    return overlap_pct >= 0.5
+
 def get_image_from_epic_api(product_slug, url_slug):
     """
     Try to fetch game image from Epic's content API.
@@ -139,8 +220,8 @@ def get_image_from_google(game_name, google_request_count=0):
     }
 
     try:
-        # Construct Google Images search query
-        search_query = f"store.epicgames.com {game_name}"
+        # Construct Google Images search query with quoted game name for better accuracy
+        search_query = f'store.epicgames.com "{game_name}"'
         encoded_query = quote_plus(search_query)
 
         # Direct Google Images request
@@ -394,12 +475,23 @@ def fetch_historical_images(limit=None, delay=0.5):
         # Try to fetch image URL from Epic API first
         image_url = get_image_from_epic_api(game['product_slug'], game['url_slug'])
         used_google = False
+        validation_passed = False
 
         if image_url:
             print(f"  ✓ Found image URL from Epic API")
+            # Validate the Epic API image
+            if validate_image_url(image_url, game['name']):
+                print(f"  ✅ Validation passed: Image matches game name")
+                validation_passed = True
+            else:
+                print(f"  ⚠️  Validation warning: Image URL may not match game name")
+                print(f"     Will try Google Images instead...")
+                image_url = None  # Reset to try Google
         else:
             print(f"  ✗ No image found in Epic API")
 
+        # Try Google if Epic API failed or validation failed
+        if not image_url:
             # Only try Google if not rate limited yet
             if not google_rate_limited:
                 print(f"  → Trying Google Images search... (Google requests: {google_request_count}/{GOOGLE_SEARCH_LIMIT})")
@@ -418,6 +510,14 @@ def fetch_historical_images(limit=None, delay=0.5):
 
                 if image_url:
                     print(f"  ✓ Found image URL from Google Images")
+                    # Validate the Google image
+                    if validate_image_url(image_url, game['name']):
+                        print(f"  ✅ Validation passed: Image matches game name")
+                        validation_passed = True
+                    else:
+                        print(f"  ⚠️  Validation warning: Image URL may not match game name")
+                        print(f"     Downloading anyway (low confidence match)")
+                        validation_passed = False  # Download but mark as low confidence
                 else:
                     print(f"  ✗ No image found in Google Images either")
 
