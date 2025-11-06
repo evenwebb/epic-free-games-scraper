@@ -7,16 +7,10 @@
             "Availability": "Nov 13 at 04:00 PM - Nov 20 at 04:00 PM"
         },
         {
-            "Name": "Idle Champions of the Forgotten Realms",
-            "Link": "https://store.epicgames.com/en-US/p/idle-champions-of-the-forgotten-realms",
+            "Name": "Songs of Silence",
+            "Link": "https://store.epicgames.com/en-US/p/8195fdc89688494bbaf6062e60d51ff1",
             "Image": "output/images/next-game2.jpg",
-            "Availability": "Nov 06 at 04:00 PM - Nov 13 at 04:00 PM"
-        },
-        {
-            "Name": "Felix The Reaper",
-            "Link": "https://store.epicgames.com/en-US/p/0724c3f1aac0495a85d5a952931b4167",
-            "Image": "output/images/next-game3.jpg",
-            "Availability": "Nov 06 at 04:00 PM - Nov 13 at 04:00 PM"
+            "Availability": "Nov 13 at 04:00 PM - Nov 20 at 04:00 PM"
         }
     ],
     "Past Games": [
@@ -31,6 +25,18 @@
             "Link": "https://store.epicgames.com/en-US/p/4b89f18efb9645ec8083b37e85cb24db",
             "Image": "output/images/4f870cf44ac24a64a44225045d4aaa96.jpg",
             "Availability": "Free Now - Nov 06 at 04:00 PM"
+        },
+        {
+            "Name": "Idle Champions of the Forgotten Realms",
+            "Link": "https://store.epicgames.com/en-US/p/idle-champions-of-the-forgotten-realms",
+            "Image": "output/images/a9748abde1c94b66aae5250bb9fc5503.jpg",
+            "Availability": "Free Now - Nov 13 at 04:00 PM"
+        },
+        {
+            "Name": "Felix The Reaper",
+            "Link": "https://store.epicgames.com/en-US/p/0724c3f1aac0495a85d5a952931b4167",
+            "Image": "output/images/64dcb34ab8794d67a59bbb4bc805d4c6.jpg",
+            "Availability": "Free Now - Nov 13 at 04:00 PM"
         }
     ]
 }
