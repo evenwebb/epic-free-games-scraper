@@ -11,6 +11,12 @@
             "Link": "https://store.epicgames.com/en-US/p/8195fdc89688494bbaf6062e60d51ff1",
             "Image": "output/images/next-game2.jpg",
             "Availability": "Nov 13 at 04:00 PM - Nov 20 at 04:00 PM"
+        },
+        {
+            "Name": "Zero Hour",
+            "Link": "https://store.epicgames.com/en-US/p/c332ef2785454852a86332d1d3e09c23",
+            "Image": "output/images/next-game3.jpg",
+            "Availability": "Nov 13 at 04:00 PM - Nov 20 at 04:00 PM"
         }
     ],
     "Past Games": [
