@@ -3,6 +3,8 @@ import os
 import requests
 from datetime import datetime, timezone
 from db_manager import DatabaseManager
+from PIL import Image
+from io import BytesIO
 
 def load_settings():
     """Load settings from the external JSON file."""
@@ -81,6 +83,38 @@ def format_date(iso_date):
     except:
         return iso_date
 
+def download_and_convert_image(image_url, output_path):
+    """Download an image and convert it to JPG format with optimization."""
+    try:
+        # Download the image
+        img_response = requests.get(image_url, timeout=10)
+        img_response.raise_for_status()
+
+        # Open image from bytes
+        img = Image.open(BytesIO(img_response.content))
+
+        # Convert to RGB if needed (handles PNG transparency, RGBA, etc.)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            # Create white background
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            # Paste image on white background using alpha channel as mask
+            if img.mode == 'RGBA':
+                background.paste(img, mask=img.split()[-1])
+            else:
+                background.paste(img)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        # Save as JPEG with optimization
+        img.save(output_path, 'JPEG', quality=85, optimize=True)
+        return True
+
+    except Exception as e:
+        raise e
+
 def scrape_epic_free_games():
     # Load settings
     settings = load_settings()
@@ -149,17 +183,14 @@ def scrape_epic_free_games():
                             game_id = game.get('id', game_link.split('/')[-1])
                             date_period = f"Free Now - {format_date(offer['endDate'])}"
 
-                            # Save image
+                            # Save image (always as JPG)
                             image_filename = None
                             if image_url:
                                 image_filename = f"{game_id}.jpg"
                                 image_path = os.path.join('output/images', image_filename)
                                 try:
-                                    img_response = requests.get(image_url, timeout=10)
-                                    img_response.raise_for_status()
-                                    with open(image_path, 'wb') as img_file:
-                                        img_file.write(img_response.content)
-                                    print(f"Downloaded image for {game_title}")
+                                    download_and_convert_image(image_url, image_path)
+                                    print(f"Downloaded and converted image for {game_title}")
                                 except Exception as e:
                                     print(f"Failed to download image for {game_title}: {e}")
                                     image_filename = None
@@ -218,18 +249,15 @@ def scrape_epic_free_games():
                             image_url = get_game_image_url(game)
                             availability = f"{format_date(offer['startDate'])} - {format_date(offer['endDate'])}"
 
-                            # Save image with dynamic filename
+                            # Save image with dynamic filename (always as JPG)
                             next_game_counter = len(next_games) + 1
                             image_filename = f"next-game{next_game_counter}.jpg" if next_game_counter > 1 else "next-game.jpg"
                             image_path = os.path.join('output/images', image_filename)
 
                             if image_url:
                                 try:
-                                    img_response = requests.get(image_url, timeout=10)
-                                    img_response.raise_for_status()
-                                    with open(image_path, 'wb') as img_file:
-                                        img_file.write(img_response.content)
-                                    print(f"Downloaded image for upcoming game: {game_title}")
+                                    download_and_convert_image(image_url, image_path)
+                                    print(f"Downloaded and converted image for upcoming game: {game_title}")
                                 except Exception as e:
                                     print(f"Failed to download image for {game_title}: {e}")
                                     image_filename = None

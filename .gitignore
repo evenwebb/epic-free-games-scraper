@@ -26,6 +26,13 @@ Thumbs.db
 # Ignore settings with sensitive data (optional)
 # settings.json
 
+# Temporary script cache files
+output/failed_google_validations.txt
+
+# Website images directory - generated from output/images during build
+# Don't commit this to avoid duplication
+website/images/
+
 # DO NOT ignore output directory - we need it for GitHub Actions
 # The database and images need to be committed
 # output/
