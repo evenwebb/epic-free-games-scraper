@@ -19,6 +19,8 @@ import json
 import random
 from urllib.parse import quote, quote_plus
 from db_manager import DatabaseManager
+from PIL import Image
+from io import BytesIO
 
 # User agents for rotation to avoid bot detection
 USER_AGENTS = [
@@ -386,33 +388,62 @@ def get_jpeg_dimensions(jpeg_data):
     return None, None
 
 def download_image(image_url, game_id):
-    """Download image and save it. Returns filename if successful."""
+    """Download image, convert to JPG, and save it. Returns filename if successful."""
 
     if not image_url:
         return None
 
     try:
+        # Download the image
         response = requests.get(image_url, timeout=15)
         response.raise_for_status()
 
-        # Determine file extension
-        ext = 'jpg'
-        if image_url.lower().endswith('.png'):
-            ext = 'png'
-        elif image_url.lower().endswith('.webp'):
-            ext = 'webp'
+        # Open image from bytes
+        img = Image.open(BytesIO(response.content))
 
-        filename = f"{game_id}.{ext}"
+        # Convert to RGB if needed (handles PNG transparency, RGBA, etc.)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            # Create white background
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            # Paste image on white background using alpha channel as mask
+            if img.mode == 'RGBA':
+                background.paste(img, mask=img.split()[-1])
+            else:
+                background.paste(img)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        # Always save as .jpg
+        filename = f"{game_id}.jpg"
         filepath = os.path.join('output/images', filename)
 
-        with open(filepath, 'wb') as f:
-            f.write(response.content)
+        # Save as JPEG with optimization
+        img.save(filepath, 'JPEG', quality=85, optimize=True)
 
         return filename
 
     except Exception as e:
-        print(f"    Error downloading image: {e}")
+        print(f"    Error downloading/converting image: {e}")
         return None
+
+def load_failed_validations():
+    """Load list of games that failed Google validation"""
+    failed_file = 'output/failed_google_validations.txt'
+    if not os.path.exists(failed_file):
+        return set()
+
+    with open(failed_file, 'r', encoding='utf-8') as f:
+        return set(line.strip() for line in f if line.strip())
+
+def save_failed_validation(game_name):
+    """Save a game name that failed Google validation"""
+    failed_file = 'output/failed_google_validations.txt'
+    os.makedirs('output', exist_ok=True)
+    with open(failed_file, 'a', encoding='utf-8') as f:
+        f.write(f"{game_name}\n")
 
 def fetch_historical_images(limit=None, delay=0.5):
     """
@@ -431,6 +462,12 @@ def fetch_historical_images(limit=None, delay=0.5):
     print("=" * 60)
 
     db = DatabaseManager()
+
+    # Load list of games that previously failed Google validation
+    failed_google_validations = load_failed_validations()
+    if failed_google_validations:
+        print(f"\nLoaded {len(failed_google_validations)} games that previously failed Google validation")
+        print("These will be skipped to save Google search credits")
 
     # Get all games without images
     with db.get_connection() as conn:
@@ -458,19 +495,24 @@ def fetch_historical_images(limit=None, delay=0.5):
     successful = 0
     failed = 0
     skipped = 0
+    skipped_failed_validation = 0  # Track games skipped due to previous validation failures
     google_request_count = 0  # Track Google searches for rate limiting
     google_rate_limited = False  # Flag to stop Google searches after 429
 
     for i, game in enumerate(games_without_images, 1):
         print(f"\n[{i}/{len(games_without_images)}] {game['name']}")
 
-        # Check if image file already exists on disk
+        # Skip if database already has an image filename (image exists in DB)
         if game.get('image_filename'):
-            image_path = os.path.join('output/images', game['image_filename'])
-            if os.path.exists(image_path):
-                print(f"  ⏭️  Image already exists: {game['image_filename']}")
-                skipped += 1
-                continue
+            print(f"  ⏭️  Image already in database: {game['image_filename']}")
+            skipped += 1
+            continue
+
+        # Skip if this game previously failed Google validation
+        if game['name'] in failed_google_validations:
+            print(f"  ⏭️  Previously failed Google validation, skipping to save credits")
+            skipped_failed_validation += 1
+            continue
 
         # Try to fetch image URL from Epic API first
         image_url = get_image_from_epic_api(game['product_slug'], game['url_slug'])
@@ -484,7 +526,7 @@ def fetch_historical_images(limit=None, delay=0.5):
                 print(f"  ✅ Validation passed: Image matches game name")
                 validation_passed = True
             else:
-                print(f"  ⚠️  Validation warning: Image URL may not match game name")
+                print(f"  ❌ Validation failed: Image URL does not match game name")
                 print(f"     Will try Google Images instead...")
                 image_url = None  # Reset to try Google
         else:
@@ -515,9 +557,12 @@ def fetch_historical_images(limit=None, delay=0.5):
                         print(f"  ✅ Validation passed: Image matches game name")
                         validation_passed = True
                     else:
-                        print(f"  ⚠️  Validation warning: Image URL may not match game name")
-                        print(f"     Downloading anyway (low confidence match)")
-                        validation_passed = False  # Download but mark as low confidence
+                        print(f"  ❌ Validation failed: Image URL does not match game name")
+                        print(f"     Skipping download (failed validation)")
+                        print(f"     Saving to skip list for future runs")
+                        save_failed_validation(game['name'])
+                        failed_google_validations.add(game['name'])
+                        image_url = None  # Reset to skip download
                 else:
                     print(f"  ✗ No image found in Google Images either")
 
@@ -530,7 +575,8 @@ def fetch_historical_images(limit=None, delay=0.5):
             else:
                 print(f"  ⏭️  Skipping Google search (rate limited)")
 
-        if image_url:
+        # Only download if we have a validated image URL
+        if image_url and validation_passed:
             # Download image
             filename = download_image(image_url, game['epic_id'])
 
@@ -551,6 +597,8 @@ def fetch_historical_images(limit=None, delay=0.5):
                 print(f"  ✗ Failed to download")
                 failed += 1
         else:
+            if image_url and not validation_passed:
+                print(f"  ⏭️  Skipped: Image failed validation")
             failed += 1
 
         # Add delay after Google searches to avoid rate limiting
@@ -566,11 +614,17 @@ def fetch_historical_images(limit=None, delay=0.5):
     print(f"Complete!")
     print(f"  Successfully fetched: {successful} images")
     print(f"  Skipped (already exist): {skipped} images")
+    if skipped_failed_validation > 0:
+        print(f"  Skipped (failed validation): {skipped_failed_validation} games")
     print(f"  Failed: {failed} games")
     print(f"  Google searches made: {google_request_count}/{GOOGLE_SEARCH_LIMIT}")
     if google_rate_limited:
         print(f"  ⚠️  Stopped due to Google limit - run again later")
     print(f"  Total processed: {i}/{len(games_without_images)} games")
+    print("=" * 60)
+    if skipped_failed_validation > 0 or len(failed_google_validations) > 0:
+        print(f"\n💡 Failed validations saved to: output/failed_google_validations.txt")
+        print(f"   ({len(failed_google_validations)} total games in skip list)")
     print("=" * 60)
 
     return successful
