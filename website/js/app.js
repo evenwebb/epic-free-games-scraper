@@ -100,6 +100,11 @@ async function init() {
     updateCountdowns();
     setInterval(updateCountdowns, 60000); // Update every minute
 
+    // Initialize upcoming games
+    if (typeof initializeUpcoming === 'function') {
+        initializeUpcoming(data);
+    }
+
     // Initialize timeline
     if (typeof initializeTimeline === 'function') {
         initializeTimeline(data);

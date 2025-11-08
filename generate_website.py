@@ -169,6 +169,16 @@ def generate_html(data):
         </div>
     </section>
 
+    <!-- Upcoming Free Games -->
+    <section class="upcoming-section" id="upcoming-games">
+        <div class="container">
+            <h2>Coming Soon - Next Free Games</h2>
+            <div id="upcomingGamesGrid" class="upcoming-games-grid">
+                <!-- Upcoming games will be populated by JavaScript -->
+            </div>
+        </div>
+    </section>
+
     <!-- Timeline View -->
     <section class="timeline-section" id="timeline">
         <div class="container">
@@ -193,6 +203,7 @@ def generate_html(data):
 
     <!-- Load our JavaScript -->
     <script src="js/app.js"></script>
+    <script src="js/upcoming.js"></script>
     <script src="js/timeline.js"></script>
     <script src="js/stats.js"></script>
     <script src="js/search.js"></script>

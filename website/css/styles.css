@@ -263,6 +263,149 @@ body {
     border-color: var(--color-primary);
 }
 
+/* Upcoming Games Section */
+.upcoming-section {
+    padding: var(--spacing-xxl) 0;
+    background: linear-gradient(180deg, var(--color-background) 0%, var(--color-surface) 50%, var(--color-background) 100%);
+    border-top: 2px solid var(--color-primary);
+    border-bottom: 2px solid var(--color-primary);
+}
+
+.upcoming-section h2 {
+    font-size: 2rem;
+    margin-bottom: var(--spacing-xl);
+    text-align: center;
+    color: var(--color-primary);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 700;
+}
+
+.upcoming-games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-xl);
+}
+
+.upcoming-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 2px solid var(--color-primary);
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+}
+
+.upcoming-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 120, 242, 0.4);
+}
+
+.upcoming-card-image {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--color-surface-light);
+}
+
+.upcoming-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s;
+}
+
+.upcoming-card:hover .upcoming-card-image img {
+    transform: scale(1.05);
+}
+
+.upcoming-badge {
+    position: absolute;
+    top: var(--spacing-md);
+    left: var(--spacing-md);
+    background: var(--color-primary);
+    color: white;
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 2px 8px rgba(0, 120, 242, 0.5);
+}
+
+.upcoming-card-content {
+    padding: var(--spacing-lg);
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.upcoming-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
+}
+
+.upcoming-card-title a {
+    color: var(--color-text);
+    text-decoration: none;
+}
+
+.upcoming-card-title a:hover {
+    color: var(--color-primary);
+}
+
+.upcoming-card-date {
+    margin-bottom: var(--spacing-md);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+
+.upcoming-card-date strong {
+    display: block;
+    color: var(--color-primary);
+    font-size: 1rem;
+    margin-bottom: var(--spacing-xs);
+}
+
+.upcoming-card-date .date-range {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+}
+
+.upcoming-card-rating {
+    color: var(--color-warning);
+    font-size: 0.875rem;
+    margin-bottom: var(--spacing-md);
+}
+
+.upcoming-card-rating::before {
+    content: '⭐ ';
+}
+
+.upcoming-cta-button {
+    display: inline-block;
+    background: var(--color-primary);
+    color: white;
+    padding: var(--spacing-md) var(--spacing-xl);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    font-weight: 600;
+    transition: background 0.2s;
+    text-align: center;
+    width: 100%;
+    margin-top: auto;
+}
+
+.upcoming-cta-button:hover {
+    background: var(--color-primary-dark);
+}
+
 /* Timeline Section */
 .timeline-section {
     padding: var(--spacing-xxl) 0;
@@ -317,11 +460,16 @@ body {
 
     .hero-section h2,
     .stats-section h2,
+    .upcoming-section h2,
     .timeline-section h2 {
         font-size: 1.5rem;
     }
 
     .current-games-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .upcoming-games-grid {
         grid-template-columns: 1fr;
     }
 
