@@ -1,8 +1,0 @@
-{
-  "pushover": {
-    "enabled": false,
-    "user_key": "your_user_key_here",
-    "app_token": "your_app_token_here",
-    "notify_always": false
-  }
-}

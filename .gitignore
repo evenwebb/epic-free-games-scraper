@@ -23,9 +23,6 @@ Thumbs.db
 # Logs
 *.log
 
-# Ignore settings with sensitive data (optional)
-# settings.json
-
 # Temporary script cache files
 output/failed_google_validations.txt
 

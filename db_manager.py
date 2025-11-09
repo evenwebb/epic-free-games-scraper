@@ -144,6 +144,73 @@ class DatabaseManager:
 
             print(f"Database initialized at {self.db_path}")
 
+    def batch_insert_or_update_games(self, games_data):
+        """
+        Batch insert or update multiple games.
+
+        Args:
+            games_data: List of dicts with keys: epic_id, name, link, platform, etc.
+
+        Returns:
+            Dict mapping (epic_id, platform) tuples to game_id
+        """
+        if not games_data:
+            return {}
+
+        game_id_map = {}
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            for game_data in games_data:
+                epic_id = game_data['epic_id']
+                platform = game_data.get('platform', 'PC')
+
+                # Try to find existing game
+                cursor.execute("""
+                    SELECT id FROM games
+                    WHERE epic_id = ? AND platform = ?
+                """, (epic_id, platform))
+
+                result = cursor.fetchone()
+
+                if result:
+                    # Update existing game
+                    game_id = result['id']
+                    cursor.execute("""
+                        UPDATE games
+                        SET name = ?,
+                            link = ?,
+                            epic_rating = COALESCE(?, epic_rating),
+                            image_filename = COALESCE(?, image_filename),
+                            sandbox_id = COALESCE(?, sandbox_id),
+                            mapping_slug = COALESCE(?, mapping_slug),
+                            product_slug = COALESCE(?, product_slug),
+                            url_slug = COALESCE(?, url_slug),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (game_data['name'], game_data['link'],
+                         game_data.get('epic_rating'), game_data.get('image_filename'),
+                         game_data.get('sandbox_id'), game_data.get('mapping_slug'),
+                         game_data.get('product_slug'), game_data.get('url_slug'),
+                         game_id))
+                else:
+                    # Insert new game
+                    cursor.execute("""
+                        INSERT INTO games (epic_id, platform, name, link, epic_rating,
+                                         image_filename, sandbox_id, mapping_slug,
+                                         product_slug, url_slug)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (epic_id, platform, game_data['name'], game_data['link'],
+                         game_data.get('epic_rating'), game_data.get('image_filename'),
+                         game_data.get('sandbox_id'), game_data.get('mapping_slug'),
+                         game_data.get('product_slug'), game_data.get('url_slug')))
+                    game_id = cursor.lastrowid
+
+                game_id_map[(epic_id, platform)] = game_id
+
+        return game_id_map
+
     def insert_or_update_game(self, epic_id, name, link, platform='PC', epic_rating=None,
                              image_filename=None, sandbox_id=None, mapping_slug=None,
                              product_slug=None, url_slug=None):
@@ -188,6 +255,37 @@ class DatabaseManager:
                 game_id = cursor.lastrowid
 
             return game_id
+
+    def batch_insert_promotions(self, promotions_data):
+        """
+        Batch insert multiple promotions, avoids duplicates.
+
+        Args:
+            promotions_data: List of dicts with keys: game_id, start_date, end_date, status, platform
+        """
+        if not promotions_data:
+            return
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            for promo_data in promotions_data:
+                # Check if this exact promotion already exists
+                cursor.execute("""
+                    SELECT id FROM promotions
+                    WHERE game_id = ? AND start_date = ? AND end_date = ?
+                """, (promo_data['game_id'], promo_data['start_date'], promo_data['end_date']))
+
+                if cursor.fetchone():
+                    # Promotion already exists, skip
+                    continue
+
+                cursor.execute("""
+                    INSERT INTO promotions (game_id, start_date, end_date, status, platform, notified)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (promo_data['game_id'], promo_data['start_date'], promo_data['end_date'],
+                     promo_data['status'], promo_data.get('platform', 'PC'),
+                     int(promo_data.get('notified', False))))
 
     def insert_promotion(self, game_id, start_date, end_date, status, platform='PC', notified=False):
         """Insert new promotion record, avoids duplicates"""
