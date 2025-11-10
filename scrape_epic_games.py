@@ -32,7 +32,6 @@ class Config:
     # Paths
     OUTPUT_DIR = 'output'
     IMAGES_DIR = 'output/images'
-    JSON_FILE = 'output/free_games.json'
 
     # Blocked IP ranges (prevent SSRF)
     BLOCKED_IP_RANGES = [
@@ -266,23 +265,15 @@ def scrape_epic_free_games():
     db = DatabaseManager()
 
     # Paths (using Config constants)
-    json_file = Config.JSON_FILE
     os.makedirs(Config.IMAGES_DIR, exist_ok=True)
 
-    # Load existing data
-    existing_data = {}
-    if os.path.exists(json_file):
-        with open(json_file, 'r', encoding='utf-8') as file:
-            existing_data = json.load(file)
+    # Performance: Load existing games from database for duplicate checking (O(1) dict lookup)
+    all_games = db.get_all_games_chronological()
+    existing_games_dict = {game['link']: game for game in all_games}
 
-    past_games = existing_data.get("Past Games", [])
-
-    # Performance: Create dict for O(1) duplicate checking instead of O(n) linear search
-    past_games_dict = {game['Link']: game for game in past_games}
-
-    next_games = []  # Track upcoming games
     new_games = []  # Track new current games
     current_games = []  # Track all current free games (for counts)
+    next_games = []  # Track upcoming games
     existing_next_game_images = []  # Track images for next games
 
     try:
@@ -366,22 +357,9 @@ def scrape_epic_free_games():
                                 'status': 'current'
                             })
 
-                            # Check for duplicates in JSON (O(1) dict lookup)
-                            existing_game = past_games_dict.get(game_link)
-                            if not existing_game:
+                            # Check for duplicates using database (O(1) dict lookup)
+                            if game_link not in existing_games_dict:
                                 new_games.append(game_title)
-
-                                # Add to past games list and dict
-                                new_game_entry = {
-                                    'Name': game_title,
-                                    'Link': game_link,
-                                    'Image': image_path,
-                                    'Availability': date_period
-                                }
-                                past_games.append(new_game_entry)
-                                past_games_dict[game_link] = new_game_entry
-                            else:
-                                image_path = existing_game.get('Image')
 
                             # Track all current free games (for statistics)
                             current_games.append({
@@ -477,15 +455,7 @@ def scrape_epic_free_games():
                 except OSError as e:
                     print(f"⚠️  Failed to remove {filename}: {e}")
 
-        # Save updated JSON
-        updated_data = {
-            "Next Games": next_games,
-            "Past Games": past_games
-        }
-        with open(json_file, 'w', encoding='utf-8') as file:
-            json.dump(updated_data, file, indent=4, ensure_ascii=False)
-
-        print(f"Data scraped successfully. Updated data saved to {json_file}")
+        print(f"Data scraped successfully. Found {len(new_games)} new games.")
 
         # Record scrape run in database
         db.record_scrape_run(

@@ -69,7 +69,7 @@ jobs:
       - name: Check for database changes
         id: check_changes
         run: |
-          if git diff --quiet output/epic_games.db output/images/ output/free_games.json 2>/dev/null; then
+          if git diff --quiet output/epic_games.db output/images/ 2>/dev/null; then
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No database or image changes detected"
           else
@@ -93,7 +93,6 @@ jobs:
           # Add database and images
           git add output/epic_games.db
           git add output/images/*.jpg output/images/*.png 2>/dev/null || true
-          git add output/free_games.json
 
           # Commit if there are changes
           if git diff --staged --quiet; then
