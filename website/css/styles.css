@@ -95,8 +95,8 @@ body {
 
 .current-games-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: var(--spacing-xl);
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--spacing-lg);
     margin-bottom: var(--spacing-xl);
 }
 
@@ -283,8 +283,8 @@ body {
 
 .upcoming-games-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: var(--spacing-xl);
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--spacing-lg);
     margin-bottom: var(--spacing-xl);
 }
 

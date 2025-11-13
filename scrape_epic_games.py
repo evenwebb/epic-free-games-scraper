@@ -118,19 +118,22 @@ def validate_url(url):
 def get_game_link(game):
     """Construct the store link for a game."""
     product_slug = game.get('productSlug')
-    url_slug = game.get('urlSlug')
 
+    # Try productSlug first (most reliable)
     if product_slug:
         return f"https://store.epicgames.com/en-US/p/{product_slug}"
-    elif url_slug:
+
+    # Then try pageSlug from catalogNs (human-readable and works consistently)
+    mappings = game.get('catalogNs', {}).get('mappings', [])
+    if mappings:
+        page_slug = mappings[0].get('pageSlug')
+        if page_slug:
+            return f"https://store.epicgames.com/en-US/p/{page_slug}"
+
+    # Fallback to urlSlug (may be a UUID that doesn't work)
+    url_slug = game.get('urlSlug')
+    if url_slug:
         return f"https://store.epicgames.com/en-US/p/{url_slug}"
-    else:
-        # Fallback to catalog namespace mapping if available
-        mappings = game.get('catalogNs', {}).get('mappings', [])
-        if mappings:
-            page_slug = mappings[0].get('pageSlug')
-            if page_slug:
-                return f"https://store.epicgames.com/en-US/p/{page_slug}"
 
     return None
 
@@ -435,9 +438,9 @@ def scrape_epic_free_games():
                             image_url = get_game_image_url(game)
                             availability = f"{format_date(offer['startDate'])} - {format_date(offer['endDate'])}"
 
-                            # Save image with dynamic filename (always as JPG) - collect for parallel download
-                            next_game_counter = len(next_games) + 1
-                            image_filename = f"next-game{next_game_counter}.jpg" if next_game_counter > 1 else "next-game.jpg"
+                            # Use epic_id for filename to ensure uniqueness and prevent cache conflicts
+                            upcoming_game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
+                            image_filename = f"{upcoming_game_id}.jpg"
                             image_path = os.path.join(Config.IMAGES_DIR, image_filename)
 
                             if image_url:
@@ -453,7 +456,6 @@ def scrape_epic_free_games():
                                 # For now, assume success
 
                             # Collect game data for batch insert
-                            upcoming_game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
                             games_to_insert.append({
                                 'epic_id': upcoming_game_id,
                                 'name': game_title,
@@ -471,7 +473,9 @@ def scrape_epic_free_games():
                                 'status': 'upcoming'
                             })
 
-                            existing_next_game_images.append(image_filename if image_filename else f"next-game{next_game_counter}.jpg" if next_game_counter > 1 else "next-game.jpg")
+                            # Track which upcoming game images are in use
+                            if image_filename:
+                                existing_next_game_images.append(image_filename)
 
                             # Add to next games
                             next_games.append({
