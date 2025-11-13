@@ -107,6 +107,12 @@ class DatabaseManager:
                 ON promotions(start_date, end_date)
             """)
 
+            # Performance: Composite index for common query pattern (status + platform)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_promotions_status_platform
+                ON promotions(status, platform)
+            """)
+
             # Scrape history table - audit trail of scraper runs
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS scrape_history (

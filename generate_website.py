@@ -15,21 +15,62 @@ def ensure_directory(path):
     os.makedirs(path, exist_ok=True)
 
 def copy_images():
-    """Copy game images to website directory"""
+    """
+    Incrementally sync game images to website directory.
+
+    Performance: Only copies new/changed files instead of all images.
+    """
     source = 'output/images'
     dest = 'website/images'
 
-    if os.path.exists(source):
-        # Remove existing images directory
-        if os.path.exists(dest):
-            shutil.rmtree(dest)
-        # Copy all images
-        shutil.copytree(source, dest)
-        image_count = len([f for f in os.listdir(dest) if f.endswith(('.jpg', '.png', '.jpeg'))])
-        print(f"Copied {image_count} images to website/images/")
-    else:
+    if not os.path.exists(source):
         print("Warning: No images directory found")
         ensure_directory(dest)
+        return
+
+    ensure_directory(dest)
+
+    # Get list of source and destination files
+    source_files = set(os.listdir(source)) if os.path.exists(source) else set()
+    dest_files = set(os.listdir(dest)) if os.path.exists(dest) else set()
+
+    copied = 0
+    skipped = 0
+    removed = 0
+
+    # Copy new or modified images
+    for filename in source_files:
+        if filename.endswith(('.jpg', '.png', '.jpeg')):
+            source_path = os.path.join(source, filename)
+            dest_path = os.path.join(dest, filename)
+
+            # Check if file needs copying (new or modified)
+            needs_copy = True
+            if os.path.exists(dest_path):
+                # Compare modification times
+                source_mtime = os.path.getmtime(source_path)
+                dest_mtime = os.path.getmtime(dest_path)
+                source_size = os.path.getsize(source_path)
+                dest_size = os.path.getsize(dest_path)
+
+                # Skip if same size and destination is newer or same age
+                if source_size == dest_size and dest_mtime >= source_mtime:
+                    needs_copy = False
+                    skipped += 1
+
+            if needs_copy:
+                shutil.copy2(source_path, dest_path)  # copy2 preserves metadata
+                copied += 1
+
+    # Remove images that no longer exist in source
+    for filename in dest_files:
+        if filename.endswith(('.jpg', '.png', '.jpeg')) and filename not in source_files:
+            dest_path = os.path.join(dest, filename)
+            os.remove(dest_path)
+            removed += 1
+
+    total_images = len([f for f in dest_files.union(source_files) if f.endswith(('.jpg', '.png', '.jpeg'))])
+    print(f"Images sync: {copied} copied, {skipped} skipped, {removed} removed ({total_images} total)")
 
 def export_data_json(db):
     """Export database data to JSON for website consumption"""

@@ -4,6 +4,7 @@ import re
 import requests
 import socket
 import ipaddress
+import hashlib
 from pathlib import Path
 from datetime import datetime, timezone
 from db_manager import DatabaseManager
@@ -11,6 +12,7 @@ from PIL import Image
 from io import BytesIO
 from urllib.parse import urlparse
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configuration Constants
 class Config:
@@ -24,6 +26,7 @@ class Config:
     IMAGE_DOWNLOAD_TIMEOUT = 10
     API_REQUEST_TIMEOUT = 30
     DOWNLOAD_CHUNK_SIZE = 8192
+    MAX_DOWNLOAD_WORKERS = 10  # Parallel download workers
 
     # Image Processing
     IMAGE_QUALITY = 85
@@ -32,6 +35,7 @@ class Config:
     # Paths
     OUTPUT_DIR = 'output'
     IMAGES_DIR = 'output/images'
+    API_HASH_FILE = 'output/.api_hash'  # Store API response hash for early exit
 
     # Blocked IP ranges (prevent SSRF)
     BLOCKED_IP_RANGES = [
@@ -186,12 +190,12 @@ def is_valid_cached_image(file_path):
         # Image is corrupted or invalid
         return False
 
-def download_and_convert_image(image_url, output_path):
+def download_and_convert_image(image_url, output_path, session=None):
     """
     Download an image and convert it to JPG format with optimization.
 
     Security: Validates URL, enforces size limits, checks dimensions.
-    Performance: Streams download, caches if exists.
+    Performance: Streams download, caches if exists, uses session for connection pooling.
     """
     # Performance: Check if valid cached image exists
     if is_valid_cached_image(output_path):
@@ -201,9 +205,12 @@ def download_and_convert_image(image_url, output_path):
     if not validate_url(image_url):
         raise ValueError(f"Invalid or unsafe URL: {image_url}")
 
+    # Use provided session or create a new requests call
+    http_client = session if session else requests
+
     try:
         # Stream download with size limit to prevent resource exhaustion
-        img_response = requests.get(
+        img_response = http_client.get(
             image_url,
             timeout=Config.IMAGE_DOWNLOAD_TIMEOUT,
             stream=True,
@@ -260,6 +267,37 @@ def download_and_convert_image(image_url, output_path):
     except (OSError, IOError) as e:
         raise RuntimeError(f"Failed to process/save image to {output_path}: {e}") from e
 
+def compute_api_hash(response_data):
+    """Compute SHA256 hash of API response for change detection."""
+    return hashlib.sha256(json.dumps(response_data, sort_keys=True).encode()).hexdigest()
+
+def load_previous_api_hash():
+    """Load the previous API response hash from file."""
+    try:
+        if os.path.exists(Config.API_HASH_FILE):
+            with open(Config.API_HASH_FILE, 'r') as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    return None
+
+def save_api_hash(hash_value):
+    """Save the current API response hash to file."""
+    try:
+        os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
+        with open(Config.API_HASH_FILE, 'w') as f:
+            f.write(hash_value)
+    except Exception as e:
+        print(f"⚠️  Failed to save API hash: {e}")
+
+def download_image_task(image_url, image_path, game_title, session):
+    """Task wrapper for parallel image downloading."""
+    try:
+        download_and_convert_image(image_url, image_path, session=session)
+        return {'success': True, 'game': game_title, 'path': image_path}
+    except Exception as e:
+        return {'success': False, 'game': game_title, 'error': str(e)}
+
 def scrape_epic_free_games():
     # Initialize database
     db = DatabaseManager()
@@ -276,6 +314,9 @@ def scrape_epic_free_games():
     next_games = []  # Track upcoming games
     existing_next_game_images = []  # Track images for next games
 
+    # Performance: Create session for connection pooling
+    session = requests.Session()
+
     try:
         # Update promotion statuses in database
         db.update_promotion_status()
@@ -283,10 +324,27 @@ def scrape_epic_free_games():
         # Fetch free games from Epic Games API
         api_url = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US'
         print("Fetching free games from Epic Games API...")
-        response = requests.get(api_url, timeout=Config.API_REQUEST_TIMEOUT)
+        response = session.get(api_url, timeout=Config.API_REQUEST_TIMEOUT)
         response.raise_for_status()
 
         api_data = response.json()
+
+        # Performance: Early exit if API response unchanged
+        current_hash = compute_api_hash(api_data)
+        previous_hash = load_previous_api_hash()
+
+        if current_hash == previous_hash and previous_hash is not None:
+            print("✓ API response unchanged - no new data to process")
+            db.record_scrape_run(
+                games_found=0,
+                new_games=0,
+                current=0,
+                upcoming=0,
+                success=True
+            )
+            return
+
+        print(f"API response changed - processing updates...")
         games = api_data['data']['Catalog']['searchStore']['elements']
 
         now = datetime.now(timezone.utc)
@@ -294,6 +352,7 @@ def scrape_epic_free_games():
         # Performance: Collect data for batch database operations
         games_to_insert = []
         promotions_to_insert = []
+        download_tasks = []  # Collect image download tasks for parallel execution
 
         # Process games
         for game in games:
@@ -321,23 +380,20 @@ def scrape_epic_free_games():
                             game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
                             date_period = f"Free Now - {format_date(offer['endDate'])}"
 
-                            # Save image (always as JPG)
+                            # Save image (always as JPG) - collect for parallel download
                             image_filename = None
+                            image_path = None
                             if image_url:
                                 image_filename = f"{game_id}.jpg"
                                 image_path = os.path.join(Config.IMAGES_DIR, image_filename)
-                                try:
-                                    if is_valid_cached_image(image_path):
-                                        print(f"Using cached image for {game_title}")
-                                    else:
-                                        download_and_convert_image(image_url, image_path)
-                                        print(f"Downloaded and converted image for {game_title}")
-                                except Exception as e:
-                                    print(f"Failed to download image for {game_title}: {e}")
-                                    image_filename = None
-                                    image_path = None
-                            else:
-                                image_path = None
+                                # Add to parallel download queue if not cached
+                                if not is_valid_cached_image(image_path):
+                                    download_tasks.append({
+                                        'url': image_url,
+                                        'path': image_path,
+                                        'game': game_title,
+                                        'type': 'current'
+                                    })
 
                             # Collect game data for batch insert
                             games_to_insert.append({
@@ -379,21 +435,22 @@ def scrape_epic_free_games():
                             image_url = get_game_image_url(game)
                             availability = f"{format_date(offer['startDate'])} - {format_date(offer['endDate'])}"
 
-                            # Save image with dynamic filename (always as JPG)
+                            # Save image with dynamic filename (always as JPG) - collect for parallel download
                             next_game_counter = len(next_games) + 1
                             image_filename = f"next-game{next_game_counter}.jpg" if next_game_counter > 1 else "next-game.jpg"
                             image_path = os.path.join(Config.IMAGES_DIR, image_filename)
 
                             if image_url:
-                                try:
-                                    if is_valid_cached_image(image_path):
-                                        print(f"Using cached image for upcoming game: {game_title}")
-                                    else:
-                                        download_and_convert_image(image_url, image_path)
-                                        print(f"Downloaded and converted image for upcoming game: {game_title}")
-                                except Exception as e:
-                                    print(f"Failed to download image for {game_title}: {e}")
-                                    image_filename = None
+                                # Add to parallel download queue if not cached
+                                if not is_valid_cached_image(image_path):
+                                    download_tasks.append({
+                                        'url': image_url,
+                                        'path': image_path,
+                                        'game': game_title,
+                                        'type': 'upcoming'
+                                    })
+                                # If download fails later, image_filename will be set to None
+                                # For now, assume success
 
                             # Collect game data for batch insert
                             upcoming_game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
@@ -427,6 +484,24 @@ def scrape_epic_free_games():
         print(f"Found {len(current_games)} current free games")
         print(f"Found {len(next_games)} upcoming free games")
 
+        # Performance: Execute parallel image downloads
+        if download_tasks:
+            print(f"Downloading {len(download_tasks)} images in parallel...")
+            with ThreadPoolExecutor(max_workers=Config.MAX_DOWNLOAD_WORKERS) as executor:
+                # Submit all download tasks
+                future_to_task = {
+                    executor.submit(download_image_task, task['url'], task['path'], task['game'], session): task
+                    for task in download_tasks
+                }
+
+                # Process results as they complete
+                for future in as_completed(future_to_task):
+                    result = future.result()
+                    if result['success']:
+                        print(f"✓ Downloaded: {result['game']}")
+                    else:
+                        print(f"✗ Failed: {result['game']} - {result['error']}")
+
         # Performance: Batch insert all games and promotions
         print(f"Batch inserting {len(games_to_insert)} games...")
         game_id_map = db.batch_insert_or_update_games(games_to_insert)
@@ -456,6 +531,9 @@ def scrape_epic_free_games():
                     print(f"⚠️  Failed to remove {filename}: {e}")
 
         print(f"Data scraped successfully. Found {len(new_games)} new games.")
+
+        # Performance: Save API hash for next run's early exit check
+        save_api_hash(current_hash)
 
         # Record scrape run in database
         db.record_scrape_run(
@@ -487,6 +565,10 @@ def scrape_epic_free_games():
         except Exception as db_error:
             print(f"⚠️  Failed to record error in database: {db_error}")
             pass  # Don't fail if database recording fails
+
+    finally:
+        # Performance: Close session to free resources
+        session.close()
 
 if __name__ == '__main__':
     scrape_epic_free_games()

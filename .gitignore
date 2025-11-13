@@ -25,6 +25,7 @@ Thumbs.db
 
 # Temporary script cache files
 output/failed_google_validations.txt
+output/.api_hash
 
 # Website images directory - generated from output/images during build
 # Don't commit this to avoid duplication

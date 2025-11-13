@@ -31,13 +31,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Get full history to preserve database
+          # Performance: Shallow clone (database already exists in repo)
+          # Only use fetch-depth: 0 for first-time setup if database is missing
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+          cache: 'pip'  # Performance: Cache pip dependencies for faster installs
 
       - name: Install dependencies
         run: |
