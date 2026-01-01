@@ -293,13 +293,24 @@ def save_api_hash(hash_value):
     except Exception as e:
         print(f"⚠️  Failed to save API hash: {e}")
 
-def download_image_task(image_url, image_path, game_title, session):
-    """Task wrapper for parallel image downloading."""
-    try:
-        download_and_convert_image(image_url, image_path, session=session)
-        return {'success': True, 'game': game_title, 'path': image_path}
-    except Exception as e:
-        return {'success': False, 'game': game_title, 'error': str(e)}
+def download_image_task(image_url, image_path, game_title, session, retries=2):
+    """Task wrapper for parallel image downloading with retry logic."""
+    last_error = None
+    for attempt in range(retries + 1):
+        try:
+            download_and_convert_image(image_url, image_path, session=session)
+            # Verify the file was created
+            if os.path.exists(image_path) and os.path.getsize(image_path) > 0:
+                return {'success': True, 'game': game_title, 'path': image_path}
+            else:
+                last_error = f"File was not created: {image_path}"
+        except Exception as e:
+            last_error = str(e)
+            if attempt < retries:
+                continue  # Retry
+        break  # Exit loop if successful or out of retries
+    
+    return {'success': False, 'game': game_title, 'error': last_error, 'path': image_path}
 
 def scrape_epic_free_games():
     # Initialize database
@@ -488,7 +499,38 @@ def scrape_epic_free_games():
         print(f"Found {len(current_games)} current free games")
         print(f"Found {len(next_games)} upcoming free games")
 
+        # Also check for existing games in database that are missing images and appear in current API
+        print("Checking for existing games missing images...")
+        existing_games_missing_images = {
+            g['epic_id']: g for g in all_games 
+            if g.get('platform') == 'PC' and not g.get('image_filename')
+        }
+        
+        api_games_by_id = {game.get('id'): game for game in games if game.get('id')}
+        retry_download_tasks = []
+        
+        for epic_id, db_game in existing_games_missing_images.items():
+            api_game = api_games_by_id.get(epic_id)
+            if api_game:
+                image_url = get_game_image_url(api_game)
+                if image_url:
+                    image_filename = f"{sanitize_filename(epic_id)}.jpg"
+                    image_path = os.path.join(Config.IMAGES_DIR, image_filename)
+                    if not is_valid_cached_image(image_path):
+                        retry_download_tasks.append({
+                            'url': image_url,
+                            'path': image_path,
+                            'game': db_game['name'],
+                            'type': 'retry'
+                        })
+        
+        if retry_download_tasks:
+            print(f"Found {len(retry_download_tasks)} existing games to retry image downloads")
+            download_tasks.extend(retry_download_tasks)
+
         # Performance: Execute parallel image downloads
+        successful_downloads = set()  # Track successfully downloaded image paths
+        failed_downloads = []  # Track failed downloads for logging
         if download_tasks:
             print(f"Downloading {len(download_tasks)} images in parallel...")
             with ThreadPoolExecutor(max_workers=Config.MAX_DOWNLOAD_WORKERS) as executor:
@@ -503,8 +545,23 @@ def scrape_epic_free_games():
                     result = future.result()
                     if result['success']:
                         print(f"✓ Downloaded: {result['game']}")
+                        successful_downloads.add(result['path'])
                     else:
                         print(f"✗ Failed: {result['game']} - {result['error']}")
+                        failed_downloads.append(result)
+            
+            if failed_downloads:
+                print(f"\n⚠️  {len(failed_downloads)} image downloads failed. These will be retried on the next scrape run.")
+
+        # Only set image_filename if the image file actually exists
+        for game_data in games_to_insert:
+            if game_data.get('image_filename'):
+                image_path = os.path.join(Config.IMAGES_DIR, game_data['image_filename'])
+                # Check if file exists (either was cached or successfully downloaded)
+                file_exists = is_valid_cached_image(image_path) or image_path in successful_downloads
+                if not file_exists:
+                    # Image doesn't exist, don't store filename (will be retried on next scrape if game appears in API again)
+                    game_data['image_filename'] = None
 
         # Performance: Batch insert all games and promotions
         print(f"Batch inserting {len(games_to_insert)} games...")
@@ -520,6 +577,26 @@ def scrape_epic_free_games():
 
         print(f"Batch inserting {len(promotions_to_insert)} promotions...")
         db.batch_insert_promotions(promotions_to_insert)
+
+        # Update image_filename for existing games that successfully downloaded images (retry downloads)
+        if successful_downloads:
+            print("Updating image_filename for existing games with successfully downloaded images...")
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                updated_count = 0
+                for image_path in successful_downloads:
+                    image_filename = os.path.basename(image_path)
+                    epic_id = os.path.splitext(image_filename)[0]  # Remove .jpg extension
+                    cursor.execute("""
+                        UPDATE games 
+                        SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE epic_id = ? AND platform = 'PC' AND (image_filename IS NULL OR image_filename = '')
+                    """, (image_filename, epic_id))
+                    if cursor.rowcount > 0:
+                        updated_count += 1
+                conn.commit()
+                if updated_count > 0:
+                    print(f"✓ Updated image_filename for {updated_count} existing games")
 
         # Cleanup old next-game images
         for filename in os.listdir(Config.IMAGES_DIR):
