@@ -326,7 +326,7 @@ def generate_html(data):
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>&copy; 2024 Epic Free Games Tracker. MIT License.</p>
+                <p>&copy; 2025 Epic Free Games Tracker. GPL-3.0 License.</p>
             </div>
         </div>
     </footer>

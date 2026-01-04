@@ -9,9 +9,10 @@ A complete system for tracking Epic Games Store free games since 2018, featuring
 ## Features
 
 ### 🎮 **Complete History**
-- **558+ PC games tracked** from December 2018 to present
+- **584+ PC games tracked** from December 2018 to present
 - SQLite database with full promotion history
 - Automatic image fetching and storage
+- All games have optimized images
 - No manual updates needed
 
 ### 🌐 **Beautiful Static Website**
@@ -33,18 +34,18 @@ A complete system for tracking Epic Games Store free games since 2018, featuring
 ### 📊 **Data Storage**
 - SQLite database for efficient querying
 - JSON export for compatibility
-- 298+ game images
+- 584+ optimized game images
 - Historical data since 2018
+- Price tracking with regional support (GBP/USD)
 
 ---
 
 ## How It Works
 
-1. **Scraper** (`scrape_epic_games.py`) fetches free games from Epic API
-2. **Database** (`output/epic_games.db`) stores games, promotions, and metadata
-3. **Image Fetcher** (`fetch_historical_images.py`) downloads missing images
-4. **Website Generator** (`generate_website.py`) creates static HTML/CSS/JS site
-5. **GitHub Actions** automatically runs the process and deploys to GitHub Pages
+1. **Scraper** (`scrape_epic_games.py`) fetches free games from Epic API (GB region for GBP pricing)
+2. **Database** (`output/epic_games.db`) stores games, promotions, metadata, prices, and images
+3. **Website Generator** (`generate_website.py`) creates static HTML/CSS/JS site with all data
+4. **GitHub Actions** automatically runs the process every 6 hours and deploys to GitHub Pages
 
 ---
 
@@ -227,6 +228,9 @@ stats = db.get_statistics()
 
 ### Statistics Dashboard
 - Total games tracked
+- Total value of free games
+- Average game price
+- Current year value
 - Games per year chart
 - Average games per week
 - Current free games count
@@ -271,6 +275,10 @@ The workflow (`.github/workflows/scrape-and-deploy.yml`) runs automatically:
 pip install -r requirements.txt
 ```
 
+## License
+
+This project is licensed under the **GPL-3.0 License** - see the [LICENSE](LICENSE) file for details.
+
 ## Credits
 
 - Data sourced from [Epic Games Store API](https://store.epicgames.com)
@@ -279,14 +287,18 @@ pip install -r requirements.txt
 
 ## Changelog
 
-### v2.0 (2025-11-01)
+### v2.0 (2025-01-04)
 - ✅ Complete rewrite with SQLite database
 - ✅ Static website generator
 - ✅ GitHub Actions automation
 - ✅ Historical image fetching
-- ✅ 558+ games from 2018-2025
+- ✅ 584+ games from 2018-2025
+- ✅ All games have optimized images
+- ✅ Price tracking with regional support (GBP/USD)
+- ✅ Current year value statistics
 - ✅ Lazy loading and performance optimizations
 - ✅ Removed Selenium dependency
+- ✅ GPL-3.0 License
 
 ### v1.0 (Original)
 - Basic web scraper with Selenium
