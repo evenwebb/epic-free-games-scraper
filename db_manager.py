@@ -41,6 +41,8 @@ class DatabaseManager:
                     link TEXT NOT NULL,
                     epic_rating REAL,
                     image_filename TEXT,
+                    original_price_cents INTEGER,
+                    currency_code TEXT,
                     sandbox_id TEXT,
                     mapping_slug TEXT,
                     product_slug TEXT,
@@ -50,6 +52,17 @@ class DatabaseManager:
                     UNIQUE(epic_id, platform)
                 )
             """)
+            
+            # Add price columns if they don't exist (migration for existing databases)
+            try:
+                cursor.execute("ALTER TABLE games ADD COLUMN original_price_cents INTEGER")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute("ALTER TABLE games ADD COLUMN currency_code TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_games_name
@@ -144,9 +157,28 @@ class DatabaseManager:
                     first_game_date TIMESTAMP,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     avg_games_per_week REAL,
-                    most_common_month INTEGER
+                    most_common_month INTEGER,
+                    total_value_cents INTEGER,
+                    avg_price_cents REAL,
+                    current_year_value_cents INTEGER
                 )
             """)
+            
+            # Add price statistics columns if they don't exist (migration)
+            try:
+                cursor.execute("ALTER TABLE statistics_cache ADD COLUMN total_value_cents INTEGER")
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                cursor.execute("ALTER TABLE statistics_cache ADD COLUMN avg_price_cents REAL")
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                cursor.execute("ALTER TABLE statistics_cache ADD COLUMN current_year_value_cents INTEGER")
+            except sqlite3.OperationalError:
+                pass
 
             print(f"Database initialized at {self.db_path}")
 
@@ -183,32 +215,66 @@ class DatabaseManager:
                 if result:
                     # Update existing game
                     game_id = result['id']
-                    cursor.execute("""
-                        UPDATE games
-                        SET name = ?,
-                            link = ?,
-                            epic_rating = COALESCE(?, epic_rating),
-                            image_filename = COALESCE(?, image_filename),
-                            sandbox_id = COALESCE(?, sandbox_id),
-                            mapping_slug = COALESCE(?, mapping_slug),
-                            product_slug = COALESCE(?, product_slug),
-                            url_slug = COALESCE(?, url_slug),
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                    """, (game_data['name'], game_data['link'],
-                         game_data.get('epic_rating'), game_data.get('image_filename'),
-                         game_data.get('sandbox_id'), game_data.get('mapping_slug'),
-                         game_data.get('product_slug'), game_data.get('url_slug'),
-                         game_id))
+                    
+                    # Check if price is already set
+                    cursor.execute("SELECT original_price_cents FROM games WHERE id = ?", (game_id,))
+                    existing_price_row = cursor.fetchone()
+                    existing_price = existing_price_row['original_price_cents'] if existing_price_row else None
+                    
+                    # Only update price if it's not already set (preserve first captured price)
+                    if (game_data.get('original_price_cents') is not None and 
+                        game_data.get('original_price_cents') > 0 and 
+                        existing_price is None):
+                        # Price not set, update it
+                        cursor.execute("""
+                            UPDATE games
+                            SET name = ?,
+                                link = ?,
+                                epic_rating = COALESCE(?, epic_rating),
+                                image_filename = COALESCE(?, image_filename),
+                                original_price_cents = ?,
+                                currency_code = ?,
+                                sandbox_id = COALESCE(?, sandbox_id),
+                                mapping_slug = COALESCE(?, mapping_slug),
+                                product_slug = COALESCE(?, product_slug),
+                                url_slug = COALESCE(?, url_slug),
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE id = ?
+                        """, (game_data['name'], game_data['link'],
+                             game_data.get('epic_rating'), game_data.get('image_filename'),
+                             game_data.get('original_price_cents'), game_data.get('currency_code'),
+                             game_data.get('sandbox_id'), game_data.get('mapping_slug'),
+                             game_data.get('product_slug'), game_data.get('url_slug'),
+                             game_id))
+                    else:
+                        # Price already set, don't update it
+                        cursor.execute("""
+                            UPDATE games
+                            SET name = ?,
+                                link = ?,
+                                epic_rating = COALESCE(?, epic_rating),
+                                image_filename = COALESCE(?, image_filename),
+                                sandbox_id = COALESCE(?, sandbox_id),
+                                mapping_slug = COALESCE(?, mapping_slug),
+                                product_slug = COALESCE(?, product_slug),
+                                url_slug = COALESCE(?, url_slug),
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE id = ?
+                        """, (game_data['name'], game_data['link'],
+                             game_data.get('epic_rating'), game_data.get('image_filename'),
+                             game_data.get('sandbox_id'), game_data.get('mapping_slug'),
+                             game_data.get('product_slug'), game_data.get('url_slug'),
+                             game_id))
                 else:
                     # Insert new game
                     cursor.execute("""
                         INSERT INTO games (epic_id, platform, name, link, epic_rating,
-                                         image_filename, sandbox_id, mapping_slug,
-                                         product_slug, url_slug)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                         image_filename, original_price_cents, currency_code,
+                                         sandbox_id, mapping_slug, product_slug, url_slug)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (epic_id, platform, game_data['name'], game_data['link'],
                          game_data.get('epic_rating'), game_data.get('image_filename'),
+                         game_data.get('original_price_cents'), game_data.get('currency_code'),
                          game_data.get('sandbox_id'), game_data.get('mapping_slug'),
                          game_data.get('product_slug'), game_data.get('url_slug')))
                     game_id = cursor.lastrowid
@@ -486,14 +552,41 @@ class DatabaseManager:
             most_common_result = cursor.fetchone()
             most_common_month = most_common_result['month'] if most_common_result else None
 
+            # Calculate price statistics
+            cursor.execute("""
+                SELECT 
+                    SUM(original_price_cents) as total_value,
+                    AVG(original_price_cents) as avg_price
+                FROM games 
+                WHERE platform = 'PC' AND original_price_cents IS NOT NULL
+            """)
+            price_result = cursor.fetchone()
+            total_value_cents = int(price_result['total_value']) if price_result['total_value'] else None
+            avg_price_cents = float(price_result['avg_price']) if price_result['avg_price'] else None
+            
+            # Calculate current year value
+            current_year = datetime.now().strftime('%Y')
+            cursor.execute("""
+                SELECT SUM(g.original_price_cents) as year_value
+                FROM games g
+                JOIN promotions p ON g.id = p.game_id
+                WHERE g.platform = 'PC' 
+                AND g.original_price_cents IS NOT NULL
+                AND strftime('%Y', p.start_date) = ?
+            """, (current_year,))
+            year_result = cursor.fetchone()
+            current_year_value_cents = int(year_result['year_value']) if year_result and year_result['year_value'] else None
+
             # Insert or update statistics
             cursor.execute("""
                 INSERT OR REPLACE INTO statistics_cache
                 (id, total_games, total_promotions, pc_games, ios_games, android_games,
-                 first_game_date, avg_games_per_week, most_common_month, last_updated)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                 first_game_date, avg_games_per_week, most_common_month,
+                 total_value_cents, avg_price_cents, current_year_value_cents, last_updated)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (total_games, total_promotions, pc_games, ios_games, android_games,
-                 first_game_date, avg_per_week, most_common_month))
+                 first_game_date, avg_per_week, most_common_month,
+                 total_value_cents, avg_price_cents, current_year_value_cents))
 
             print(f"Statistics updated: {total_games} total games ({pc_games} PC, {ios_games} iOS, {android_games} Android)")
 

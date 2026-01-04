@@ -153,6 +153,14 @@ def get_game_image_url(game):
 
     return None
 
+def get_game_price(game):
+    """Extract original price and currency from game API data."""
+    price_data = game.get('price', {})
+    total_price = price_data.get('totalPrice', {}) if price_data else {}
+    original_price_cents = total_price.get('originalPrice')  # in cents, None if not available
+    currency_code = total_price.get('currencyCode', 'USD')
+    return original_price_cents, currency_code
+
 @lru_cache(maxsize=128)
 def format_date(iso_date):
     """Format ISO date to human-readable format. Cached for performance."""
@@ -335,8 +343,8 @@ def scrape_epic_free_games():
         # Update promotion statuses in database
         db.update_promotion_status()
 
-        # Fetch free games from Epic Games API
-        api_url = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US'
+        # Fetch free games from Epic Games API (UK/GBP for regional pricing)
+        api_url = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-GB&country=GB&allowCountries=GB'
         print("Fetching free games from Epic Games API...")
         response = session.get(api_url, timeout=Config.API_REQUEST_TIMEOUT)
         response.raise_for_status()
@@ -394,6 +402,9 @@ def scrape_epic_free_games():
                             game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
                             date_period = f"Free Now - {format_date(offer['endDate'])}"
 
+                            # Extract price information
+                            original_price_cents, currency_code = get_game_price(game)
+
                             # Save image (always as JPG) - collect for parallel download
                             image_filename = None
                             image_path = None
@@ -415,7 +426,9 @@ def scrape_epic_free_games():
                                 'name': game_title,
                                 'link': game_link,
                                 'platform': 'PC',
-                                'image_filename': image_filename
+                                'image_filename': image_filename,
+                                'original_price_cents': original_price_cents,
+                                'currency_code': currency_code
                             })
 
                             # Collect promotion data for batch insert (will add game_id later)
@@ -449,6 +462,9 @@ def scrape_epic_free_games():
                             image_url = get_game_image_url(game)
                             availability = f"{format_date(offer['startDate'])} - {format_date(offer['endDate'])}"
 
+                            # Extract price information
+                            original_price_cents, currency_code = get_game_price(game)
+
                             # Use epic_id for filename to ensure uniqueness and prevent cache conflicts
                             upcoming_game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
                             image_filename = f"{upcoming_game_id}.jpg"
@@ -472,7 +488,9 @@ def scrape_epic_free_games():
                                 'name': game_title,
                                 'link': game_link,
                                 'platform': 'PC',
-                                'image_filename': image_filename
+                                'image_filename': image_filename,
+                                'original_price_cents': original_price_cents,
+                                'currency_code': currency_code
                             })
 
                             # Collect promotion data for batch insert (will add game_id later)

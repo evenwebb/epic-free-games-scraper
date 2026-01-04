@@ -88,6 +88,13 @@ def export_data_json(db):
 
     # Format games for JSON export
     def format_game(game):
+        # Format price if available
+        original_price = None
+        currency = None
+        if game.get('original_price_cents') is not None and game.get('original_price_cents') > 0:
+            original_price = game['original_price_cents'] / 100.0  # Convert cents to dollars
+            currency = game.get('currency_code', 'USD')
+        
         return {
             'id': game['id'],
             'epicId': game['epic_id'],
@@ -96,12 +103,29 @@ def export_data_json(db):
             'platform': game['platform'],
             'rating': game['epic_rating'],
             'image': f"images/{game['image_filename']}" if game['image_filename'] else None,
+            'originalPrice': original_price,
+            'currency': currency,
             'firstFreeDate': game.get('first_free_date'),
             'lastFreeDate': game.get('last_free_date'),
             'startDate': game.get('start_date'),
             'endDate': game.get('end_date'),
             'status': game.get('all_statuses', '').split(',')[0] if game.get('all_statuses') else None
         }
+
+    # Format price statistics
+    total_value = stats.get('total_value_cents')
+    avg_price = stats.get('avg_price_cents')
+    current_year_value = stats.get('current_year_value_cents')
+    
+    # Convert cents to currency units for display
+    # Check what currency most games use (default to GBP for UK)
+    total_value_display = total_value / 100.0 if total_value else None
+    avg_price_display = avg_price / 100.0 if avg_price else None
+    current_year_value_display = current_year_value / 100.0 if current_year_value else None
+    
+    # Determine currency from stats (most common currency in database)
+    # For now default to GBP since we're using UK region
+    currency_code = 'GBP'
 
     # Create main data export (PC only)
     data_export = {
@@ -111,7 +135,11 @@ def export_data_json(db):
             'totalPromotions': stats.get('total_promotions', 0),
             'firstGameDate': stats.get('first_game_date'),
             'avgGamesPerWeek': stats.get('avg_games_per_week', 0),
-            'gamesByYear': games_by_year
+            'gamesByYear': games_by_year,
+            'totalValue': total_value_display,
+            'avgPrice': avg_price_display,
+            'currentYearValue': current_year_value_display,
+            'currency': currency_code
         },
         'currentGames': [format_game(g) for g in current_games],
         'upcomingGames': [format_game(g) for g in upcoming_games],
@@ -127,12 +155,27 @@ def export_data_json(db):
     print(f"Exported {len(all_games)} games to {data_file}")
     return data_export
 
+def format_price(amount, currency='GBP'):
+    """Format price amount with currency symbol"""
+    if amount is None or amount == 0:
+        return '£0'
+    
+    # Format with currency symbol
+    if currency == 'GBP':
+        return f'£{amount:,.0f}'
+    elif currency == 'USD':
+        return f'${amount:,.0f}'
+    else:
+        return f'{amount:,.0f} {currency}'
+
 def generate_html(data):
     """Generate index.html from template"""
     print("Generating HTML...")
 
     current_games = data['currentGames']
     stats = data['statistics']
+    currency = stats.get('currency', 'GBP')
+    current_year_value = stats.get('currentYearValue', 0)
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -194,6 +237,10 @@ def generate_html(data):
                     <div class="stat-number">{stats['avgGamesPerWeek']:.1f}</div>
                     <div class="stat-label">Games/Week</div>
                 </div>
+                {f'''<div class="stat-card">
+                    <div class="stat-number">{format_price(current_year_value, currency)}</div>
+                    <div class="stat-label">2026 Value</div>
+                </div>''' if current_year_value else ''}
             </div>
             <div class="chart-container">
                 <canvas id="gamesChart"></canvas>
