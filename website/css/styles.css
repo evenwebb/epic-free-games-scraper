@@ -95,10 +95,11 @@ body {
 
 .current-games-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: var(--spacing-lg);
     margin-bottom: var(--spacing-xl);
     justify-items: center;
+    justify-content: center;
 }
 
 .hero-card {
@@ -109,6 +110,7 @@ body {
     transition: transform 0.2s, box-shadow 0.2s;
     max-width: 400px;
     width: 100%;
+    justify-self: center;
 }
 
 .hero-card:hover {
@@ -299,10 +301,11 @@ body {
 
 .upcoming-games-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: var(--spacing-lg);
     margin-bottom: var(--spacing-xl);
     justify-items: center;
+    justify-content: center;
 }
 
 .upcoming-card {
@@ -315,6 +318,7 @@ body {
     flex-direction: column;
     max-width: 400px;
     width: 100%;
+    justify-self: center;
 }
 
 .upcoming-card:hover {

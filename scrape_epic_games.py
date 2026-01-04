@@ -377,6 +377,11 @@ def scrape_epic_free_games():
         download_tasks = []  # Collect image download tasks for parallel execution
 
         # Process games
+        # IMPORTANT: Process upcoming games FIRST to capture prices before they become free
+        # When games become free, API returns originalPrice: 0, so we need to capture
+        # prices during the "coming soon" phase when they still have actual values
+        
+        # First pass: Process upcoming games to capture prices
         for game in games:
             if not game.get('promotions'):
                 continue
@@ -388,71 +393,7 @@ def scrape_epic_free_games():
                 print(f"Skipping {game_title}: no valid link found")
                 continue
 
-            # Check current promotions (free now)
-            promo_offers = game['promotions'].get('promotionalOffers', [])
-            if promo_offers and len(promo_offers) > 0:
-                for offer_group in promo_offers:
-                    for offer in offer_group.get('promotionalOffers', []):
-                        start = datetime.fromisoformat(offer['startDate'].replace('Z', '+00:00'))
-                        end = datetime.fromisoformat(offer['endDate'].replace('Z', '+00:00'))
-
-                        # Only process if currently free (100% discount)
-                        if start <= now <= end and offer['discountSetting']['discountPercentage'] == 0:
-                            image_url = get_game_image_url(game)
-                            game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
-                            date_period = f"Free Now - {format_date(offer['endDate'])}"
-
-                            # Extract price information
-                            original_price_cents, currency_code = get_game_price(game)
-
-                            # Save image (always as JPG) - collect for parallel download
-                            image_filename = None
-                            image_path = None
-                            if image_url:
-                                image_filename = f"{game_id}.jpg"
-                                image_path = os.path.join(Config.IMAGES_DIR, image_filename)
-                                # Add to parallel download queue if not cached
-                                if not is_valid_cached_image(image_path):
-                                    download_tasks.append({
-                                        'url': image_url,
-                                        'path': image_path,
-                                        'game': game_title,
-                                        'type': 'current'
-                                    })
-
-                            # Collect game data for batch insert
-                            games_to_insert.append({
-                                'epic_id': game_id,
-                                'name': game_title,
-                                'link': game_link,
-                                'platform': 'PC',
-                                'image_filename': image_filename,
-                                'original_price_cents': original_price_cents,
-                                'currency_code': currency_code
-                            })
-
-                            # Collect promotion data for batch insert (will add game_id later)
-                            promotions_to_insert.append({
-                                'epic_id': game_id,  # Temporary key for lookup
-                                'platform': 'PC',
-                                'start_date': offer['startDate'],
-                                'end_date': offer['endDate'],
-                                'status': 'current'
-                            })
-
-                            # Check for duplicates using database (O(1) dict lookup)
-                            if game_link not in existing_games_dict:
-                                new_games.append(game_title)
-
-                            # Track all current free games (for statistics)
-                            current_games.append({
-                                'Name': game_title,
-                                'Link': game_link,
-                                'Image': image_path,
-                                'Availability': date_period
-                            })
-
-            # Check upcoming promotions (free later)
+            # Check upcoming promotions FIRST (free later) - capture prices here
             upcoming_offers = game['promotions'].get('upcomingPromotionalOffers', [])
             if upcoming_offers and len(upcoming_offers) > 0:
                 for offer_group in upcoming_offers:
@@ -463,6 +404,7 @@ def scrape_epic_free_games():
                             availability = f"{format_date(offer['startDate'])} - {format_date(offer['endDate'])}"
 
                             # Extract price information
+                            # Upcoming games have actual prices (not 0), so capture them here
                             original_price_cents, currency_code = get_game_price(game)
 
                             # Use epic_id for filename to ensure uniqueness and prevent cache conflicts
@@ -514,8 +456,168 @@ def scrape_epic_free_games():
                                 'Availability': availability
                             })
 
-        print(f"Found {len(current_games)} current free games")
-        print(f"Found {len(next_games)} upcoming free games")
+        # Second pass: Process currently free games (won't overwrite prices captured above)
+        for game in games:
+            if not game.get('promotions'):
+                continue
+
+            game_title = game['title']
+            game_link = get_game_link(game)
+
+            if not game_link:
+                continue
+
+            # Check current promotions (free now)
+            promo_offers = game['promotions'].get('promotionalOffers', [])
+            if promo_offers and len(promo_offers) > 0:
+                for offer_group in promo_offers:
+                    for offer in offer_group.get('promotionalOffers', []):
+                        start = datetime.fromisoformat(offer['startDate'].replace('Z', '+00:00'))
+                        end = datetime.fromisoformat(offer['endDate'].replace('Z', '+00:00'))
+
+                        # Only process if currently free (100% discount)
+                        if start <= now <= end and offer['discountSetting']['discountPercentage'] == 0:
+                            image_url = get_game_image_url(game)
+                            game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
+                            date_period = f"Free Now - {format_date(offer['endDate'])}"
+
+                            # Extract price information
+                            # NOTE: When game is currently free, API returns originalPrice: 0
+                            # We should NOT overwrite existing prices with 0
+                            # Prices are captured from "upcoming" phase when they have actual values
+                            original_price_cents, currency_code = get_game_price(game)
+                            
+                            # If price is 0, set to None to prevent overwriting existing prices
+                            if original_price_cents == 0:
+                                original_price_cents = None
+                                currency_code = None
+
+                            # Save image (always as JPG) - collect for parallel download
+                            image_filename = None
+                            image_path = None
+                            if image_url:
+                                image_filename = f"{game_id}.jpg"
+                                image_path = os.path.join(Config.IMAGES_DIR, image_filename)
+                                # Add to parallel download queue if not cached
+                                if not is_valid_cached_image(image_path):
+                                    download_tasks.append({
+                                        'url': image_url,
+                                        'path': image_path,
+                                        'game': game_title,
+                                        'type': 'current'
+                                    })
+
+                            # Collect game data for batch insert
+                            # When game is currently free, we don't want to overwrite price with None/0
+                            games_to_insert.append({
+                                'epic_id': game_id,
+                                'name': game_title,
+                                'link': game_link,
+                                'platform': 'PC',
+                                'image_filename': image_filename,
+                                'original_price_cents': original_price_cents,  # Will be None if 0
+                                'currency_code': currency_code
+                            })
+
+                            # Collect promotion data for batch insert (will add game_id later)
+                            promotions_to_insert.append({
+                                'epic_id': game_id,  # Temporary key for lookup
+                                'platform': 'PC',
+                                'start_date': offer['startDate'],
+                                'end_date': offer['endDate'],
+                                'status': 'current'
+                            })
+
+                            # Check for duplicates using database (O(1) dict lookup)
+                            if game_link not in existing_games_dict:
+                                new_games.append(game_title)
+
+                            # Track all current free games (for statistics)
+                            current_games.append({
+                                'Name': game_title,
+                                'Link': game_link,
+                                'Image': image_path,
+                                'Availability': date_period
+                            })
+
+            # Check upcoming promotions (free later)
+            # IMPORTANT: Process upcoming games to capture prices BEFORE they become free
+            # When games become free, API returns originalPrice: 0, so we need to capture
+            # the price during the "upcoming" phase when it still has the actual value
+            upcoming_offers = game['promotions'].get('upcomingPromotionalOffers', [])
+            if upcoming_offers and len(upcoming_offers) > 0:
+                for offer_group in upcoming_offers:
+                    for offer in offer_group.get('promotionalOffers', []):
+                        # Only process if it will be free (100% discount)
+                        if offer['discountSetting']['discountPercentage'] == 0:
+                            image_url = get_game_image_url(game)
+                            availability = f"{format_date(offer['startDate'])} - {format_date(offer['endDate'])}"
+
+                            # Extract price information
+                            # Upcoming games have actual prices (not 0), so capture them here
+                            original_price_cents, currency_code = get_game_price(game)
+
+                            # Use epic_id for filename to ensure uniqueness and prevent cache conflicts
+                            upcoming_game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
+                            image_filename = f"{upcoming_game_id}.jpg"
+                            image_path = os.path.join(Config.IMAGES_DIR, image_filename)
+
+                            if image_url:
+                                # Add to parallel download queue if not cached
+                                if not is_valid_cached_image(image_path):
+                                    download_tasks.append({
+                                        'url': image_url,
+                                        'path': image_path,
+                                        'game': game_title,
+                                        'type': 'upcoming'
+                                    })
+                                # If download fails later, image_filename will be set to None
+                                # For now, assume success
+
+                            # Collect game data for batch insert
+                            games_to_insert.append({
+                                'epic_id': upcoming_game_id,
+                                'name': game_title,
+                                'link': game_link,
+                                'platform': 'PC',
+                                'image_filename': image_filename,
+                                'original_price_cents': original_price_cents,
+                                'currency_code': currency_code
+                            })
+
+                            # Collect promotion data for batch insert (will add game_id later)
+                            promotions_to_insert.append({
+                                'epic_id': upcoming_game_id,  # Temporary key for lookup
+                                'platform': 'PC',
+                                'start_date': offer['startDate'],
+                                'end_date': offer['endDate'],
+                                'status': 'upcoming'
+                            })
+
+                            # Track which upcoming game images are in use
+                            if image_filename:
+                                existing_next_game_images.append(image_filename)
+
+                            # Add to next games
+                            next_games.append({
+                                'Name': game_title,
+                                'Link': game_link,
+                                'Image': image_path,
+                                'Availability': availability
+                            })
+
+        # Second pass: Process currently free games (won't overwrite prices captured above)
+        for game in games:
+            if not game.get('promotions'):
+                continue
+
+            game_title = game['title']
+            game_link = get_game_link(game)
+
+            if not game_link:
+                continue
+
+            # Check current promotions (free now)
 
         # Also check for existing games in database that are missing images and appear in current API
         print("Checking for existing games missing images...")
