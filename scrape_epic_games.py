@@ -506,9 +506,18 @@ def scrape_epic_free_games():
             if g.get('platform') == 'PC' and not g.get('image_filename')
         }
         
+        # Check for mystery games that have been revealed (name changed from "Mystery Game X")
+        mystery_games_to_update = []
+        for g in all_games:
+            if g.get('platform') == 'PC' and 'mystery' in g['name'].lower():
+                mystery_games_to_update.append(g)
+        
         api_games_by_id = {game.get('id'): game for game in games if game.get('id')}
         retry_download_tasks = []
+        mystery_update_tasks = []
+        mystery_updates = {}  # Store mystery game update info
         
+        # Check for games missing images
         for epic_id, db_game in existing_games_missing_images.items():
             api_game = api_games_by_id.get(epic_id)
             if api_game:
@@ -524,9 +533,45 @@ def scrape_epic_free_games():
                             'type': 'retry'
                         })
         
+        # Check for mystery games that have been revealed or have updated images
+        for db_game in mystery_games_to_update:
+            epic_id = db_game['epic_id']
+            api_game = api_games_by_id.get(epic_id)
+            if api_game:
+                api_name = api_game.get('title', '')
+                db_name = db_game['name']
+                
+                # Check if mystery game has been revealed (name changed and no longer contains "mystery")
+                is_revealed = ('mystery' not in api_name.lower() and 
+                              api_name.lower() != db_name.lower())
+                
+                # Always update image for mystery games if they appear in API (images may have changed)
+                image_url = get_game_image_url(api_game)
+                if image_url:
+                    image_filename = f"{sanitize_filename(epic_id)}.jpg"
+                    image_path = os.path.join(Config.IMAGES_DIR, image_filename)
+                    
+                    # Always download new image for mystery games (even if file exists, in case image changed)
+                    mystery_update_tasks.append({
+                        'url': image_url,
+                        'path': image_path,
+                        'epic_id': epic_id,
+                        'old_name': db_name,
+                        'new_name': api_name if is_revealed else db_name,
+                        'update_name': is_revealed,
+                        'type': 'mystery_update'
+                    })
+        
         if retry_download_tasks:
             print(f"Found {len(retry_download_tasks)} existing games to retry image downloads")
             download_tasks.extend(retry_download_tasks)
+        
+        if mystery_update_tasks:
+            print(f"Found {len(mystery_update_tasks)} mystery games to update")
+            download_tasks.extend([{k: v for k, v in task.items() if k != 'update_name' and k != 'old_name' and k != 'epic_id' and k != 'new_name'} 
+                                  for task in mystery_update_tasks])
+            # Store mystery update info separately for later processing
+            mystery_updates.update({task['epic_id']: task for task in mystery_update_tasks})
 
         # Performance: Execute parallel image downloads
         successful_downloads = set()  # Track successfully downloaded image paths
@@ -579,24 +624,53 @@ def scrape_epic_free_games():
         db.batch_insert_promotions(promotions_to_insert)
 
         # Update image_filename for existing games that successfully downloaded images (retry downloads)
+        # Also handle mystery games that have been revealed
         if successful_downloads:
-            print("Updating image_filename for existing games with successfully downloaded images...")
+            print("Updating existing games with successfully downloaded images...")
             with db.get_connection() as conn:
                 cursor = conn.cursor()
                 updated_count = 0
+                mystery_revealed_count = 0
+                
                 for image_path in successful_downloads:
                     image_filename = os.path.basename(image_path)
                     epic_id = os.path.splitext(image_filename)[0]  # Remove .jpg extension
-                    cursor.execute("""
-                        UPDATE games 
-                        SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE epic_id = ? AND platform = 'PC' AND (image_filename IS NULL OR image_filename = '')
-                    """, (image_filename, epic_id))
-                    if cursor.rowcount > 0:
-                        updated_count += 1
+                    
+                    # Check if this is a mystery game update
+                    mystery_info = mystery_updates.get(epic_id)
+                    
+                    if mystery_info and mystery_info.get('update_name'):
+                        # Mystery game revealed - update both name and image
+                        cursor.execute("""
+                            UPDATE games 
+                            SET name = ?, image_filename = ?, updated_at = CURRENT_TIMESTAMP
+                            WHERE epic_id = ? AND platform = 'PC'
+                        """, (mystery_info['new_name'], image_filename, epic_id))
+                        if cursor.rowcount > 0:
+                            mystery_revealed_count += 1
+                            print(f"  ✓ Revealed: {mystery_info['old_name']} → {mystery_info['new_name']}")
+                    else:
+                        # Regular image update (for games missing images)
+                        cursor.execute("""
+                            UPDATE games 
+                            SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
+                            WHERE epic_id = ? AND platform = 'PC' AND (image_filename IS NULL OR image_filename = '')
+                        """, (image_filename, epic_id))
+                        if cursor.rowcount > 0:
+                            updated_count += 1
+                    # Always update image_filename if it changed (for mystery games that already had images)
+                    if mystery_info and not mystery_info.get('update_name'):
+                        cursor.execute("""
+                            UPDATE games 
+                            SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
+                            WHERE epic_id = ? AND platform = 'PC'
+                        """, (image_filename, epic_id))
+                
                 conn.commit()
                 if updated_count > 0:
                     print(f"✓ Updated image_filename for {updated_count} existing games")
+                if mystery_revealed_count > 0:
+                    print(f"✓ Revealed and updated {mystery_revealed_count} mystery games")
 
         # Cleanup old next-game images
         for filename in os.listdir(Config.IMAGES_DIR):
