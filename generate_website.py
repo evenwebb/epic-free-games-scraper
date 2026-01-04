@@ -382,6 +382,22 @@ def generate_current_games_html(games):
         # Add lazy loading to images
         image_html = f'<img src="{game["image"]}" alt="{game["name"]}" loading="lazy">' if game.get('image') else '<div class="no-image">No Image</div>'
 
+        # Format price if available
+        price_html = ''
+        if game.get('originalPrice') and game.get('originalPrice') > 0:
+            currency = game.get('currency', 'GBP')
+            price_html = f'<div class="game-price">Value: {format_price(game["originalPrice"], currency)}</div>'
+
+        # Format start date if available
+        start_date_html = ''
+        if game.get('startDate'):
+            try:
+                from datetime import datetime
+                start_date = datetime.fromisoformat(game['startDate'].replace('Z', '+00:00'))
+                start_date_html = f'<div class="game-start-date">Available since: {start_date.strftime("%B %d, %Y")}</div>'
+            except:
+                pass
+
         html_parts.append(f'''
             <div class="hero-card">
                 <div class="hero-card-image">
@@ -389,6 +405,8 @@ def generate_current_games_html(games):
                 </div>
                 <div class="hero-card-content">
                     <h3>{game["name"]}</h3>
+                    {start_date_html}
+                    {price_html}
                     <div class="countdown" data-end="{game.get("endDate", "")}">Time remaining...</div>
                     <a href="{game["link"]}" target="_blank" rel="noopener" class="cta-button">Get It Free</a>
                 </div>

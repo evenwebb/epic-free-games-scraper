@@ -36,6 +36,13 @@ function renderUpcomingGames(upcomingGames) {
     const section = document.getElementById('upcoming-games');
     if (section) {
         section.style.display = 'block';
+        
+        // Update heading to use "Game" (singular) or "Games" (plural)
+        const heading = section.querySelector('h2');
+        if (heading) {
+            const gameCount = upcomingGames.length;
+            heading.textContent = `Coming Soon - Next Free ${gameCount === 1 ? 'Game' : 'Games'}`;
+        }
     }
 
     upcomingGames.forEach(game => {
@@ -88,6 +95,16 @@ function createUpcomingGameCard(game) {
     titleLink.textContent = game.name;
     title.appendChild(titleLink);
     content.appendChild(title);
+
+    // Price (if available)
+    if (game.originalPrice && game.originalPrice > 0) {
+        const priceDiv = document.createElement('div');
+        priceDiv.className = 'upcoming-card-price';
+        const currency = game.currency || 'GBP';
+        const priceSymbol = currency === 'GBP' ? '£' : currency === 'USD' ? '$' : '';
+        priceDiv.textContent = `Value: ${priceSymbol}${game.originalPrice.toLocaleString('en-US', {maximumFractionDigits: 0})}`;
+        content.appendChild(priceDiv);
+    }
 
     // Availability date
     const dateInfo = document.createElement('div');

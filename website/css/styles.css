@@ -98,6 +98,7 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: var(--spacing-lg);
     margin-bottom: var(--spacing-xl);
+    justify-items: center;
 }
 
 .hero-card {
@@ -106,6 +107,8 @@ body {
     overflow: hidden;
     border: 1px solid var(--color-border);
     transition: transform 0.2s, box-shadow 0.2s;
+    max-width: 400px;
+    width: 100%;
 }
 
 .hero-card:hover {
@@ -143,6 +146,19 @@ body {
 .hero-card-content h3 {
     font-size: 1.25rem;
     margin-bottom: var(--spacing-md);
+}
+
+.game-start-date {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    margin-bottom: var(--spacing-sm);
+}
+
+.game-price {
+    color: var(--color-success, #10b981);
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-sm);
 }
 
 .countdown {
@@ -286,6 +302,7 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: var(--spacing-lg);
     margin-bottom: var(--spacing-xl);
+    justify-items: center;
 }
 
 .upcoming-card {
@@ -296,6 +313,8 @@ body {
     transition: transform 0.2s, box-shadow 0.2s;
     display: flex;
     flex-direction: column;
+    max-width: 400px;
+    width: 100%;
 }
 
 .upcoming-card:hover {
@@ -376,6 +395,13 @@ body {
 .upcoming-card-date .date-range {
     color: var(--color-text-muted);
     font-size: 0.875rem;
+}
+
+.upcoming-card-price {
+    color: var(--color-success, #10b981);
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
 }
 
 .upcoming-card-rating {
