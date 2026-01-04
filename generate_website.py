@@ -177,6 +177,14 @@ def generate_html(data):
     currency = stats.get('currency', 'GBP')
     current_year_value = stats.get('currentYearValue', 0)
 
+    # Build conditional current year value stat card
+    current_year_stat = ''
+    if current_year_value:
+        current_year_stat = f'''<div class="stat-card">
+                    <div class="stat-number">{format_price(current_year_value, currency)}</div>
+                    <div class="stat-label">2026 Value</div>
+                </div>'''
+
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -237,10 +245,7 @@ def generate_html(data):
                     <div class="stat-number">{stats['avgGamesPerWeek']:.1f}</div>
                     <div class="stat-label">Games/Week</div>
                 </div>
-                {f'''<div class="stat-card">
-                    <div class="stat-number">{format_price(current_year_value, currency)}</div>
-                    <div class="stat-label">2026 Value</div>
-                </div>''' if current_year_value else ''}
+                {current_year_stat}
             </div>
             <div class="chart-container">
                 <canvas id="gamesChart"></canvas>
