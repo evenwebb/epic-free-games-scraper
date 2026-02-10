@@ -5,7 +5,6 @@ import requests
 import socket
 import ipaddress
 import hashlib
-from pathlib import Path
 from datetime import datetime, timezone
 from db_manager import DatabaseManager
 from PIL import Image
@@ -141,8 +140,8 @@ def get_game_image_url(game):
     """Get the best image URL for a game."""
     key_images = game.get('keyImages', [])
 
-    # Prefer OfferImageWide, then OfferImageTall, then Thumbnail
-    for image_type in ['OfferImageWide', 'OfferImageTall', 'Thumbnail']:
+    # Prefer OfferImageWide, then OfferImageTall, Thumbnail, then featuredMedia (Epic sometimes uses this)
+    for image_type in ['OfferImageWide', 'OfferImageTall', 'Thumbnail', 'featuredMedia']:
         for image in key_images:
             if image.get('type') == image_type:
                 return image.get('url')
@@ -225,7 +224,7 @@ def download_and_convert_image(image_url, output_path, session=None):
             image_url,
             timeout=Config.IMAGE_DOWNLOAD_TIMEOUT,
             stream=True,
-            allow_redirects=False  # Prevent redirect-based attacks
+            allow_redirects=True  # Epic CDN may use redirects
         )
         img_response.raise_for_status()
 
@@ -367,7 +366,12 @@ def scrape_epic_free_games():
             return
 
         print(f"API response changed - processing updates...")
-        games = api_data['data']['Catalog']['searchStore']['elements']
+        try:
+            games = api_data['data']['Catalog']['searchStore']['elements']
+        except (KeyError, TypeError) as e:
+            raise ValueError(f"Unexpected API response structure: {e}") from e
+        if not isinstance(games, list):
+            raise ValueError("API did not return a list of games")
 
         now = datetime.now(timezone.utc)
 
@@ -606,25 +610,19 @@ def scrape_epic_free_games():
                                 'Availability': availability
                             })
 
-        # Second pass: Process currently free games (won't overwrite prices captured above)
-        for game in games:
-            if not game.get('promotions'):
-                continue
-
-            game_title = game['title']
-            game_link = get_game_link(game)
-
-            if not game_link:
-                continue
-
-            # Check current promotions (free now)
-
         # Also check for existing games in database that are missing images and appear in current API
+        # Includes: 1) games with no image_filename, 2) games with image_filename but file doesn't exist
         print("Checking for existing games missing images...")
-        existing_games_missing_images = {
-            g['epic_id']: g for g in all_games 
-            if g.get('platform') == 'PC' and not g.get('image_filename')
-        }
+        existing_games_missing_images = {}
+        for g in all_games:
+            if g.get('platform') != 'PC':
+                continue
+            if not g.get('image_filename'):
+                existing_games_missing_images[g['epic_id']] = g
+            else:
+                img_path = os.path.join(Config.IMAGES_DIR, g['image_filename'])
+                if not is_valid_cached_image(img_path):
+                    existing_games_missing_images[g['epic_id']] = g
         
         # Check for mystery games that have been revealed (name changed from "Mystery Game X")
         mystery_games_to_update = []
@@ -791,6 +789,22 @@ def scrape_epic_free_games():
                     print(f"✓ Updated image_filename for {updated_count} existing games")
                 if mystery_revealed_count > 0:
                     print(f"✓ Revealed and updated {mystery_revealed_count} mystery games")
+
+        # Cleanup: clear image_filename for games where the file doesn't exist (orphaned references)
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, epic_id, name, image_filename FROM games WHERE image_filename IS NOT NULL AND image_filename != ''"
+            )
+            for row in cursor.fetchall():
+                img_path = os.path.join(Config.IMAGES_DIR, row['image_filename'])
+                if not is_valid_cached_image(img_path):
+                    cursor.execute(
+                        "UPDATE games SET image_filename = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (row['id'],)
+                    )
+                    if cursor.rowcount > 0:
+                        print(f"  Cleared orphaned image ref: {row['name']}")
 
         # Cleanup old next-game images
         for filename in os.listdir(Config.IMAGES_DIR):

@@ -54,8 +54,9 @@ function applyFilters() {
     // Apply year filter
     if (year && year !== 'all') {
         filtered = filtered.filter(game => {
-            const gameYear = new Date(game.firstFreeDate).getFullYear().toString();
-            return gameYear === year;
+            if (!game.firstFreeDate) return false;
+            const gameYear = new Date(game.firstFreeDate).getFullYear();
+            return !isNaN(gameYear) && gameYear.toString() === year;
         });
     }
 

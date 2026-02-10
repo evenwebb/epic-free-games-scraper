@@ -45,22 +45,6 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Check if database exists
-        id: check_db
-        run: |
-          if [ -f "output/epic_games.db" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Run initial migration (first time only)
-        if: steps.check_db.outputs.exists == 'false'
-        run: |
-          echo "No database found. Running initial migration..."
-          python3 migrate_historical_data.py
-          echo "Migration complete!"
-
       - name: Run scraper
         id: scraper
         run: |

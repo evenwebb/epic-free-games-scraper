@@ -4,6 +4,7 @@ Generate static website from the Epic Games free games database.
 Creates a complete static site with HTML, CSS, JS, and data files.
 """
 
+import html
 import json
 import os
 import shutil
@@ -178,11 +179,12 @@ def generate_html(data):
     current_year_value = stats.get('currentYearValue', 0)
 
     # Build conditional current year value stat card
+    current_year = datetime.now(timezone.utc).strftime('%Y')
     current_year_stat = ''
     if current_year_value:
         current_year_stat = f'''<div class="stat-card">
                     <div class="stat-number">{format_price(current_year_value, currency)}</div>
-                    <div class="stat-label">2026 Value</div>
+                    <div class="stat-label">{current_year} Value</div>
                 </div>'''
 
     html = f'''<!DOCTYPE html>
@@ -326,7 +328,7 @@ def generate_html(data):
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>&copy; 2025 Epic Free Games Tracker. GPL-3.0 License.</p>
+                <p>&copy; {datetime.now(timezone.utc).strftime('%Y')} Epic Free Games Tracker. GPL-3.0 License.</p>
             </div>
         </div>
     </footer>
@@ -372,6 +374,10 @@ def generate_html(data):
 
     print("Generated index.html")
 
+def escape(s):
+    """Escape HTML to prevent XSS."""
+    return html.escape(str(s)) if s is not None else ''
+
 def generate_current_games_html(games):
     """Generate HTML for current free games cards"""
     if not games:
@@ -379,8 +385,10 @@ def generate_current_games_html(games):
 
     html_parts = []
     for game in games:
+        name = escape(game["name"])
+        img_src = escape(game["image"]) if game.get('image') else ''
         # Add lazy loading to images
-        image_html = f'<img src="{game["image"]}" alt="{game["name"]}" loading="lazy">' if game.get('image') else '<div class="no-image">No Image</div>'
+        image_html = f'<img src="{img_src}" alt="{name}" loading="lazy">' if game.get('image') else '<div class="no-image">No Image</div>'
 
         # Format price if available
         price_html = ''
@@ -404,11 +412,11 @@ def generate_current_games_html(games):
                     {image_html}
                 </div>
                 <div class="hero-card-content">
-                    <h3>{game["name"]}</h3>
+                    <h3>{name}</h3>
                     {start_date_html}
                     {price_html}
                     <div class="countdown" data-end="{game.get("endDate", "")}">Time remaining...</div>
-                    <a href="{game["link"]}" target="_blank" rel="noopener" class="cta-button">Get It Free</a>
+                    <a href="{escape(game["link"])}" target="_blank" rel="noopener" class="cta-button">Get It Free</a>
                 </div>
             </div>
         ''')

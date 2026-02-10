@@ -561,8 +561,8 @@ class DatabaseManager:
                 WHERE platform = 'PC' AND original_price_cents IS NOT NULL
             """)
             price_result = cursor.fetchone()
-            total_value_cents = int(price_result['total_value']) if price_result['total_value'] else None
-            avg_price_cents = float(price_result['avg_price']) if price_result['avg_price'] else None
+            total_value_cents = int(price_result['total_value']) if price_result and price_result['total_value'] is not None else None
+            avg_price_cents = float(price_result['avg_price']) if price_result and price_result['avg_price'] is not None else None
             
             # Calculate current year value
             current_year = datetime.now().strftime('%Y')

@@ -78,14 +78,11 @@ python3 -m http.server 8000
 If you're starting fresh without the database:
 
 ```bash
-# Import historical games from JSON
-python3 migrate_historical_data.py
-
-# Fetch images for historical games (optional, takes ~10 minutes)
-python3 fetch_historical_images.py
-
-# Run scraper to get current games
+# Run scraper (creates database and tables automatically)
 python3 scrape_epic_games.py
+
+# Fetch images for games missing them (optional; requires STEAMGRIDDB_API_KEY)
+python3 fetch_missing_images.py
 
 # Generate website
 python3 generate_website.py
@@ -136,22 +133,15 @@ Fetches current and upcoming free games from the Epic API, downloads images, and
 python3 scrape_epic_games.py
 ```
 
-### `migrate_historical_data.py`
-Imports games from `epic_free_games.json` into the database (PC games only).
+### `fetch_missing_images.py`
+Downloads images for games that don't have them (uses SteamGridDB when `STEAMGRIDDB_API_KEY` is set).
 
 ```bash
-python3 migrate_historical_data.py
-```
+export STEAMGRIDDB_API_KEY="your_key"
+python3 fetch_missing_images.py
 
-### `fetch_historical_images.py`
-Downloads images for games that don't have them yet.
-
-```bash
-# Fetch all images
-python3 fetch_historical_images.py
-
-# Fetch first 50 only (for testing)
-python3 fetch_historical_images.py 50
+# Re-fetch specific games (e.g. wrong aspect ratio)
+python3 fetch_missing_images.py --re-fetch <epic_id> [epic_id ...]
 ```
 
 ### `generate_website.py`
@@ -258,11 +248,10 @@ The workflow (`.github/workflows/scrape-and-deploy.yml`) runs automatically:
 1. Check out repository
 2. Set up Python 3.11
 3. Install dependencies
-4. Run migration (first time only)
-5. Run scraper
-6. Generate website
-7. Commit database updates
-8. Deploy to GitHub Pages
+4. Run scraper (creates database automatically on first run)
+5. Generate website
+6. Commit database updates
+7. Deploy to GitHub Pages
 
 ---
 
