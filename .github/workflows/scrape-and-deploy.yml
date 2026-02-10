@@ -1,119 +1,74 @@
 name: Scrape Epic Games and Deploy to GitHub Pages
 
 on:
-  # Run every 6 hours
   schedule:
     - cron: '0 */6 * * *'
-
-  # Allow manual trigger
   workflow_dispatch:
-
-  # Run on push to main (for testing)
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: write
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment
+# Cancel in-progress runs when a new one starts (saves free-tier minutes)
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   scrape-and-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          # Performance: Shallow clone (database already exists in repo)
-          # Only use fetch-depth: 0 for first-time setup if database is missing
           fetch-depth: 1
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'  # Performance: Cache pip dependencies for faster installs
+          cache: 'pip'
 
-      - name: Install dependencies
+      - name: Scrape
+        id: scrape
         run: |
-          pip install -r requirements.txt
-
-      - name: Run scraper
-        id: scraper
-        run: |
-          echo "Running Epic Games scraper..."
+          pip install -q -r requirements.txt
           python3 scrape_epic_games.py
-          echo "Scraper complete!"
 
-      - name: Check for database changes
-        id: check_changes
+      - name: Check changes
+        id: changes
         run: |
           if git diff --quiet output/epic_games.db output/images/ 2>/dev/null; then
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "No database or image changes detected"
           else
             echo "changed=true" >> $GITHUB_OUTPUT
-            echo "Database or images changed, will regenerate website"
           fi
 
-      - name: Generate website
-        if: steps.check_changes.outputs.changed == 'true'
+      - name: Build and commit
+        if: steps.changes.outputs.changed == 'true'
         run: |
-          echo "Generating static website..."
           python3 generate_website.py
-          echo "Website generation complete!"
-
-      - name: Commit database updates
-        if: steps.check_changes.outputs.changed == 'true'
-        run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
+          git add output/epic_games.db output/images/
+          git diff --staged --quiet || (git commit -m "Update database and images - $(date -u +"%Y-%m-%d %H:%M UTC")" && git push)
 
-          # Add database and images
-          git add output/epic_games.db
-          git add output/images/*.jpg output/images/*.png 2>/dev/null || true
-
-          # Commit if there are changes
-          if git diff --staged --quiet; then
-            echo "No database changes to commit"
-          else
-            git commit -m "Update database and images - $(date -u +"%Y-%m-%d %H:%M UTC")"
-            git push
-          fi
-
-      - name: Setup Pages
-        if: steps.check_changes.outputs.changed == 'true'
+      - if: steps.changes.outputs.changed == 'true'
         uses: actions/configure-pages@v4
 
-      - name: Upload artifact
-        if: steps.check_changes.outputs.changed == 'true'
+      - if: steps.changes.outputs.changed == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: './website'
 
-      - name: Deploy to GitHub Pages
-        if: steps.check_changes.outputs.changed == 'true'
-        id: deployment
+      - if: steps.changes.outputs.changed == 'true'
         uses: actions/deploy-pages@v4
 
-      - name: Report status
-        if: always()
+      - if: always()
         run: |
-          echo "### 🎮 Epic Games Scraper Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🎮 Epic Games Scraper" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Time**: $(date -u +"%Y-%m-%d %H:%M UTC")" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.check_changes.outputs.changed }}" == "true" ]; then
-            echo "- **Changes**: Database/images updated" >> $GITHUB_STEP_SUMMARY
-            echo "- **Website**: Regenerated and deployed" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- **Changes**: No changes detected" >> $GITHUB_STEP_SUMMARY
-            echo "- **Website**: Deployment skipped (no changes)" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "- **Deployed**: ${{ steps.changes.outputs.changed == 'true' }}" >> $GITHUB_STEP_SUMMARY
