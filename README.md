@@ -26,7 +26,7 @@ A complete system for tracking Epic Games Store free games since 2018, featuring
 
 ### 🤖 **Automated Scraping**
 - Uses official Epic Games API (no web scraping)
-- Runs automatically every 6 hours via GitHub Actions
+- Runs automatically daily at 4pm UK time via GitHub Actions
 - Downloads high-quality game images
 - Updates database and website automatically
 - Pushover notifications (optional)
@@ -45,7 +45,7 @@ A complete system for tracking Epic Games Store free games since 2018, featuring
 1. **Scraper** (`scrape_epic_games.py`) fetches free games from Epic API (GB region for GBP pricing)
 2. **Database** (`output/epic_games.db`) stores games, promotions, metadata, prices, and images
 3. **Website Generator** (`generate_website.py`) creates static HTML/CSS/JS site with all data
-4. **GitHub Actions** automatically runs the process every 6 hours and deploys to GitHub Pages
+4. **GitHub Actions** automatically runs the process daily at 4pm UK time and deploys to GitHub Pages
 
 ---
 
@@ -108,7 +108,7 @@ The website is automatically deployed to GitHub Pages via GitHub Actions.
    ```
 
 3. **GitHub Actions will automatically**:
-   - Run the scraper every 6 hours
+   - Run the scraper daily at 4pm UK time
    - Update the database
    - Generate the website
    - Deploy to GitHub Pages
@@ -237,7 +237,7 @@ stats = db.get_statistics()
 
 The workflow (`.github/workflows/scrape-and-deploy.yml`) runs automatically:
 
-**Schedule**: Every 6 hours (0:00, 6:00, 12:00, 18:00 UTC)
+**Schedule**: Daily at 4pm UK time (15:00 and 16:00 UTC to cover BST/GMT)
 
 **Triggers**:
 - Scheduled (cron)

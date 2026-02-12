@@ -2,7 +2,10 @@ name: Scrape Epic Games and Deploy to GitHub Pages
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    # 4pm UK daily - GitHub Actions uses UTC. Run at both times so it's correct
+    # when UK switches clocks: 15:00 UTC = 4pm BST (summer), 16:00 UTC = 4pm GMT (winter)
+    - cron: '0 15 * * *'
+    - cron: '0 16 * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -18,7 +21,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Lightweight check: fetch API and compare hash. Skip full scrape when unchanged.
+  check-api:
+    runs-on: ubuntu-22.04
+    outputs:
+      api_unchanged: ${{ steps.check.outputs.api_unchanged }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Check if API response changed
+        id: check
+        run: |
+          API_URL="https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-GB&country=GB&allowCountries=GB"
+          current_hash=$(curl -sL "$API_URL" | python3 -c "
+          import json, sys, hashlib
+          data = json.load(sys.stdin)
+          print(hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest())
+          ")
+          prev_hash=$(cat output/.api_hash 2>/dev/null || echo "")
+          if [ -n "$prev_hash" ] && [ "$current_hash" = "$prev_hash" ]; then
+            echo "api_unchanged=true" >> $GITHUB_OUTPUT
+            echo "✓ API unchanged - skipping scrape"
+          else
+            echo "api_unchanged=false" >> $GITHUB_OUTPUT
+            echo "API changed - running full scrape"
+          fi
+
+      - if: always()
+        run: |
+          echo "### 🎮 Epic Games Scraper" >> $GITHUB_STEP_SUMMARY
+          echo "- **API unchanged**: ${{ steps.check.outputs.api_unchanged == 'true' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Skipped scrape**: ${{ steps.check.outputs.api_unchanged == 'true' }}" >> $GITHUB_STEP_SUMMARY
+
   scrape-and-build:
+    needs: check-api
+    if: needs.check-api.outputs.api_unchanged != 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
 
@@ -41,6 +80,7 @@ jobs:
       - name: Check changes
         id: changes
         run: |
+          # Only build/deploy when db or images changed - skip if only .api_hash changed
           if git diff --quiet output/epic_games.db output/images/ 2>/dev/null; then
             echo "changed=false" >> $GITHUB_OUTPUT
           else
@@ -53,8 +93,16 @@ jobs:
           python3 generate_website.py
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add output/epic_games.db output/images/
+          git add output/epic_games.db output/images/ output/.api_hash
           git diff --staged --quiet || (git commit -m "Update database and images - $(date -u +"%Y-%m-%d %H:%M UTC")" && git push)
+
+      - name: Commit .api_hash only (when no db/images changes)
+        if: steps.changes.outputs.changed == 'false'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add output/.api_hash
+          git diff --staged --quiet || (git commit -m "Update API hash - $(date -u +"%Y-%m-%d %H:%M UTC")" && git push)
 
       - if: steps.changes.outputs.changed == 'true'
         uses: actions/configure-pages@v4
