@@ -33,21 +33,7 @@ jobs:
 
       - name: Check if API response changed
         id: check
-        run: |
-          API_URL="https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-GB&country=GB&allowCountries=GB"
-          current_hash=$(curl -sL "$API_URL" | python3 -c "
-          import json, sys, hashlib
-          data = json.load(sys.stdin)
-          print(hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest())
-          ")
-          prev_hash=$(cat output/.api_hash 2>/dev/null || echo "")
-          if [ -n "$prev_hash" ] && [ "$current_hash" = "$prev_hash" ]; then
-            echo "api_unchanged=true" >> $GITHUB_OUTPUT
-            echo "✓ API unchanged - skipping scrape"
-          else
-            echo "api_unchanged=false" >> $GITHUB_OUTPUT
-            echo "API changed - running full scrape"
-          fi
+        run: python3 scripts/api_hash_check.py
 
       - if: always()
         run: |
@@ -112,7 +98,14 @@ jobs:
         with:
           path: './website'
 
-      - if: steps.changes.outputs.changed == 'true'
+      - name: Deploy to GitHub Pages
+        id: deploy
+        if: steps.changes.outputs.changed == 'true'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+
+      - name: Deploy to GitHub Pages (retry)
+        if: steps.changes.outputs.changed == 'true' && steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v4
 
       - if: always()

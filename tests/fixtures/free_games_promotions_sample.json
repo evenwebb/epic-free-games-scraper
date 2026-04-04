@@ -1,0 +1,82 @@
+{
+  "data": {
+    "Catalog": {
+      "searchStore": {
+        "elements": [
+          {
+            "id": "fixture-game-current",
+            "title": "Fixture Current Game",
+            "productSlug": "fixture-current-game",
+            "keyImages": [
+              {
+                "type": "OfferImageWide",
+                "url": "https://cdn1.epicgames.com/offer/fixture-wide.jpg"
+              }
+            ],
+            "price": {
+              "totalPrice": {
+                "originalPrice": 0,
+                "currencyCode": "GBP"
+              }
+            },
+            "promotions": {
+              "promotionalOffers": [
+                {
+                  "promotionalOffers": [
+                    {
+                      "startDate": "2020-01-01T15:00:00.000Z",
+                      "endDate": "2035-12-31T15:00:00.000Z",
+                      "discountSetting": {
+                        "discountPercentage": 0
+                      }
+                    }
+                  ]
+                }
+              ],
+              "upcomingPromotionalOffers": []
+            }
+          },
+          {
+            "id": "fixture-game-upcoming",
+            "title": "Fixture Upcoming Game",
+            "catalogNs": {
+              "mappings": [
+                {
+                  "pageSlug": "fixture-upcoming-page"
+                }
+              ]
+            },
+            "keyImages": [],
+            "price": {
+              "totalPrice": {
+                "originalPrice": 2499,
+                "currencyCode": "GBP"
+              }
+            },
+            "promotions": {
+              "promotionalOffers": [],
+              "upcomingPromotionalOffers": [
+                {
+                  "promotionalOffers": [
+                    {
+                      "startDate": "2030-06-01T15:00:00.000Z",
+                      "endDate": "2030-06-08T15:00:00.000Z",
+                      "discountSetting": {
+                        "discountPercentage": 0
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "fixture-no-promo",
+            "title": "Fixture No Promotions",
+            "productSlug": "fixture-no-promo"
+          }
+        ]
+      }
+    }
+  }
+}

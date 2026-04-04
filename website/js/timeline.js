@@ -120,7 +120,7 @@ function groupGamesByDate(games) {
     games.forEach(game => {
         const date = new Date(game.firstFreeDate);
         const year = date.getFullYear();
-        const month = date.toLocaleDateString('en-US', { month: 'long' });
+        const month = date.toLocaleDateString('en-GB', { month: 'long' });
 
         if (!grouped[year]) {
             grouped[year] = {};

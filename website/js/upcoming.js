@@ -102,7 +102,7 @@ function createUpcomingGameCard(game) {
         priceDiv.className = 'upcoming-card-price';
         const currency = game.currency || 'GBP';
         const priceSymbol = currency === 'GBP' ? '£' : currency === 'USD' ? '$' : '';
-        priceDiv.textContent = `Value: ${priceSymbol}${game.originalPrice.toLocaleString('en-US', {maximumFractionDigits: 0})}`;
+        priceDiv.textContent = `Value: ${priceSymbol}${game.originalPrice.toLocaleString('en-GB', {maximumFractionDigits: 0})}`;
         content.appendChild(priceDiv);
     }
 
@@ -168,5 +168,5 @@ function createUpcomingGameCard(game) {
 function formatDate(dateString) {
     if (!dateString) return 'Unknown';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString('en-GB', { month: 'short', day: 'numeric', year: 'numeric' });
 }

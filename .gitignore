@@ -7,6 +7,7 @@ __pycache__/
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 
@@ -25,6 +26,7 @@ Thumbs.db
 
 # Temporary script cache files
 output/failed_google_validations.txt
+output/scrape_run_summary.json
 
 # SQLite WAL mode runtime files (don't commit)
 *.db-shm
