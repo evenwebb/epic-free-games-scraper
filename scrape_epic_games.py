@@ -446,6 +446,19 @@ def download_image_task(image_url, image_path, game_title, session, retries=2):
     
     return {'success': False, 'game': game_title, 'error': last_error, 'path': image_path}
 
+def _download_task_display_name(task: dict) -> str:
+    """Human-readable name for an image download task."""
+    name = (
+        task.get('game')
+        or task.get('new_name')
+        or task.get('old_name')
+        or task.get('epic_id')
+    )
+    if name:
+        return str(name)
+    path = task.get('path')
+    return os.path.basename(path) if path else 'unknown'
+
 def scrape_epic_free_games():
     # Initialize database
     db = DatabaseManager()
@@ -761,6 +774,7 @@ def scrape_epic_free_games():
                         'old_name': db_name,
                         'new_name': api_name if is_revealed else db_name,
                         'update_name': is_revealed,
+                        'game': api_name if is_revealed else db_name,
                         'type': 'mystery_update'
                     })
         
@@ -770,8 +784,11 @@ def scrape_epic_free_games():
         
         if mystery_update_tasks:
             print(f"Found {len(mystery_update_tasks)} mystery games to update")
-            download_tasks.extend([{k: v for k, v in task.items() if k != 'update_name' and k != 'old_name' and k != 'epic_id' and k != 'new_name'} 
-                                  for task in mystery_update_tasks])
+            # Keep enough fields for logging + future-proofing; only exclude fields not needed by downloader.
+            download_tasks.extend([
+                {k: v for k, v in task.items() if k != 'update_name'}
+                for task in mystery_update_tasks
+            ])
             # Store mystery update info separately for later processing
             mystery_updates.update({task['epic_id']: task for task in mystery_update_tasks})
 
@@ -783,7 +800,13 @@ def scrape_epic_free_games():
             with ThreadPoolExecutor(max_workers=Config.MAX_DOWNLOAD_WORKERS) as executor:
                 # Submit all download tasks
                 future_to_task = {
-                    executor.submit(download_image_task, task['url'], task['path'], task['game'], session): task
+                    executor.submit(
+                        download_image_task,
+                        task['url'],
+                        task['path'],
+                        _download_task_display_name(task),
+                        session,
+                    ): task
                     for task in download_tasks
                 }
 
