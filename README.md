@@ -9,11 +9,11 @@ A complete system for tracking Epic Games Store free games since 2018, featuring
 ## Features
 
 ### 🎮 **Complete History**
-- **584+ PC games tracked** from December 2018 to present
+- **600+ PC games tracked** from December 2018 to present (count grows with each scrape)
 - SQLite database with full promotion history
 - Automatic image fetching and storage
-- All games have optimized images
-- No manual updates needed
+- Optimized JPG images under `output/images/`
+- No manual updates needed for day-to-day runs
 
 ### 🌐 **Beautiful Static Website**
 - Timeline view of all free games by year and month
@@ -25,18 +25,18 @@ A complete system for tracking Epic Games Store free games since 2018, featuring
 - Responsive design (mobile-friendly)
 
 ### 🤖 **Automated Scraping**
-- Uses official Epic Games API (no web scraping)
+- Uses official Epic Games API (no HTML scraping)
 - Runs automatically daily at 4pm UK time via GitHub Actions
 - Downloads high-quality game images
 - Updates database and website automatically
-- Pushover notifications (optional)
+- Skips heavy work when the API payload is unchanged (hash check)
 
 ### 📊 **Data Storage**
 - SQLite database for efficient querying
-- JSON export for compatibility
-- 584+ optimized game images
+- JSON export for the static site (`website/data/`)
+- Game images on disk, referenced from the database
 - Historical data since 2018
-- Price tracking with regional support (GBP/USD)
+- Price data captured in **GBP** (API uses GB storefront settings in `epic_config.py`)
 
 ---
 
@@ -78,15 +78,14 @@ python3 -m http.server 8000
 If you're starting fresh without the database:
 
 ```bash
-# Run scraper (creates database and tables automatically)
+# Run scraper (creates database and tables automatically; downloads images)
 python3 scrape_epic_games.py
-
-# Fetch images for games missing them (optional; requires STEAMGRIDDB_API_KEY)
-python3 fetch_missing_images.py
 
 # Generate website
 python3 generate_website.py
 ```
+
+The scraper retries missing or invalid images on later runs when those games still appear in the Epic free-games API.
 
 ---
 
@@ -108,11 +107,9 @@ The website is automatically deployed to GitHub Pages via GitHub Actions.
    ```
 
 3. **GitHub Actions will automatically**:
-   - Run the scraper daily at 4pm UK time
-   - Update the database
-   - Generate the website
-   - Deploy to GitHub Pages
-   - Commit database updates back to the repository
+   - Check daily (4pm UK) whether the Epic API payload changed
+   - When it changed: run the scraper, then regenerate the site and deploy if the database or images changed
+   - Commit database / image / `.api_hash` updates back to the repository when applicable
 
 4. **View your site** at: `https://[username].github.io/epic-free-games-scraper/`
 
@@ -127,21 +124,10 @@ You can manually trigger the workflow:
 ## Scripts
 
 ### `scrape_epic_games.py`
-Fetches current and upcoming free games from the Epic API, downloads images, and updates the database.
+Fetches current and upcoming free games from the Epic API (URL and locale live in `epic_config.py`), downloads images, and updates the database.
 
 ```bash
 python3 scrape_epic_games.py
-```
-
-### `fetch_missing_images.py`
-Downloads images for games that don't have them (uses SteamGridDB when `STEAMGRIDDB_API_KEY` is set).
-
-```bash
-export STEAMGRIDDB_API_KEY="your_key"
-python3 fetch_missing_images.py
-
-# Re-fetch specific games (e.g. wrong aspect ratio)
-python3 fetch_missing_images.py --re-fetch <epic_id> [epic_id ...]
 ```
 
 ### `generate_website.py`
@@ -151,27 +137,16 @@ Generates the complete static website from the database.
 python3 generate_website.py
 ```
 
+When copying images into `website/images/`, the script warns if the database references files that are missing under `output/images/`. In **GitHub Actions** (`CI=true`), it **fails the job** unless you set `GENERATE_WEBSITE_ALLOW_MISSING_IMAGES=1` (emergency override only). Locally you can force failure with `GENERATE_WEBSITE_FAIL_ON_MISSING_IMAGES=1`.
+
+### `scripts/api_hash_check.py`
+Used by Actions to compare the live free-games API JSON to `output/.api_hash` (stdlib + `urllib` only; no `pip install` in that step). Not normally run by hand.
+
 ---
 
 ## Configuration
 
-### Pushover Notifications (Optional)
-
-Create `settings.json`:
-
-```json
-{
-  "pushover": {
-    "enabled": true,
-    "user_key": "your_user_key",
-    "app_token": "your_app_token",
-    "notify_always": false
-  }
-}
-```
-
-- `enabled`: Turn notifications on/off
-- `notify_always`: Notify for all games (true) or only new games (false)
+API endpoint and storefront locale are centralized in **`epic_config.py`** (`FREE_GAMES_PROMOTIONS_URL`, `STORE_PATH_LOCALE`) so the scraper and hash check always stay in sync.
 
 ---
 
@@ -213,7 +188,7 @@ stats = db.get_statistics()
 
 ### Search & Filters
 - Search by game name
-- Filter by year (2018-2025)
+- Filter by year (2018–present)
 - Sort by: Newest, Oldest, A-Z, Rating
 
 ### Statistics Dashboard
@@ -235,30 +210,44 @@ stats = db.get_statistics()
 
 ## GitHub Actions
 
-The workflow (`.github/workflows/scrape-and-deploy.yml`) runs automatically:
+### `scrape-and-deploy.yml` (scrape + Pages)
 
-**Schedule**: Daily at 4pm UK time (15:00 and 16:00 UTC to cover BST/GMT)
+Runs automatically with:
+
+**Schedule**: Daily around 4pm UK time (**15:00** and **16:00 UTC** cron lines cover **BST** vs **GMT**).
 
 **Triggers**:
-- Scheduled (cron)
-- Manual dispatch
-- Push to main branch
+- Schedule (cron)
+- Manual **workflow_dispatch**
+- Push to **main** (ignored for paths that only touch `**.md` / `LICENSE` / `.gitattributes`)
 
-**Steps**:
-1. Check out repository
-2. Set up Python 3.11
-3. Install dependencies
-4. Run scraper (creates database automatically on first run)
-5. Generate website
-6. Commit database updates
-7. Deploy to GitHub Pages
+**Flow** (single job, optimized):
+1. Shallow checkout
+2. Run **`scripts/api_hash_check.py`** — if the API payload matches `output/.api_hash`, the workflow skips installing Python dependencies, **`scrape_epic_games.py`**, and all commit/deploy steps for that run (fast path).
+3. If the API changed: set up **Python 3.11**, install dependencies, run **`scrape_epic_games.py`**
+4. If `output/epic_games.db` or `output/images/` changed: run **`generate_website.py`**, commit outputs, configure Pages, upload artifact, deploy (with one retry on deploy failure)
+5. If only the hash metadata needs updating: commit **`output/.api_hash`** when needed
+
+**Concurrency**: New runs cancel older in-progress **pages** workflow runs.
+
+### `ci.yml` (tests + site build smoke test)
+
+On push / PR to **main** (same `paths-ignore` as above for Markdown-only changes):
+
+1. Shallow checkout, Python **3.11**, pip cache
+2. `pip install -r requirements.txt`
+3. **`pytest`**
+4. **`generate_website.py`** against the committed DB
+5. Assert `website/index.html` and `website/data/games.json` exist
+
+**Concurrency**: New commits cancel superseded CI runs on the same branch / PR.
 
 ---
 
 ## Requirements
 
-- Python 3.9+
-- `requests` library (only dependency!)
+- **Python 3.11+** (matches CI)
+- See **`requirements.txt`**: `requests`, `Pillow`, `pytest`
 
 ```bash
 pip install -r requirements.txt

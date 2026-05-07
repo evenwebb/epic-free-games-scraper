@@ -459,6 +459,236 @@ def _download_task_display_name(task: dict) -> str:
     path = task.get('path')
     return os.path.basename(path) if path else 'unknown'
 
+
+def collect_upcoming_promo_image_filenames(games):
+    """
+    Basenames (e.g. epic_id.jpg) used by upcoming free promotions.
+
+    Used for legacy cleanup of old next-game*.jpg files so behavior matches
+    the main catalog loop without duplicating state while iterating.
+    """
+    filenames = set()
+    for game in games:
+        if not game.get('promotions'):
+            continue
+        game_title = game['title']
+        game_link = get_game_link(game)
+        if not game_link:
+            continue
+        upcoming_offers = game['promotions'].get('upcomingPromotionalOffers', [])
+        if not upcoming_offers:
+            continue
+        for offer_group in upcoming_offers:
+            for offer in offer_group.get('promotionalOffers', []):
+                if epic_free_discount_percentage(offer) != 0:
+                    continue
+                _, end = parse_offer_iso_dates(offer, game_title)
+                if end is None:
+                    continue
+                upcoming_game_id = sanitize_filename(
+                    game.get('id', game_link.split('/')[-1])
+                )
+                image_filename = f"{upcoming_game_id}.jpg"
+                if image_filename:
+                    filenames.add(image_filename)
+    return filenames
+
+
+def collect_retry_and_mystery_download_tasks(all_games, games):
+    """
+    Image downloads for (1) PC games in DB that lack a valid cached image but
+    appear in the current API payload, and (2) mystery games that need art refresh.
+    """
+    print("Checking for existing games missing images...")
+    existing_games_missing_images = {}
+    for g in all_games:
+        if g.get('platform') != 'PC':
+            continue
+        if not g.get('image_filename'):
+            existing_games_missing_images[g['epic_id']] = g
+        else:
+            img_path = os.path.join(Config.IMAGES_DIR, g['image_filename'])
+            if not is_valid_cached_image(img_path):
+                existing_games_missing_images[g['epic_id']] = g
+
+    mystery_games_to_update = []
+    for g in all_games:
+        if g.get('platform') == 'PC' and 'mystery' in g['name'].lower():
+            mystery_games_to_update.append(g)
+
+    api_games_by_id = {game.get('id'): game for game in games if game.get('id')}
+    retry_download_tasks = []
+    mystery_update_tasks = []
+
+    for epic_id, db_game in existing_games_missing_images.items():
+        api_game = api_games_by_id.get(epic_id)
+        if api_game:
+            image_url = get_game_image_url(api_game)
+            if image_url:
+                image_filename = f"{sanitize_filename(epic_id)}.jpg"
+                image_path = os.path.join(Config.IMAGES_DIR, image_filename)
+                if not is_valid_cached_image(image_path):
+                    retry_download_tasks.append({
+                        'url': image_url,
+                        'path': image_path,
+                        'game': db_game['name'],
+                        'type': 'retry'
+                    })
+
+    for db_game in mystery_games_to_update:
+        epic_id = db_game['epic_id']
+        api_game = api_games_by_id.get(epic_id)
+        if api_game:
+            api_name = api_game.get('title', '')
+            db_name = db_game['name']
+            is_revealed = (
+                'mystery' not in api_name.lower() and
+                api_name.lower() != db_name.lower()
+            )
+            image_url = get_game_image_url(api_game)
+            if image_url:
+                image_filename = f"{sanitize_filename(epic_id)}.jpg"
+                image_path = os.path.join(Config.IMAGES_DIR, image_filename)
+                mystery_update_tasks.append({
+                    'url': image_url,
+                    'path': image_path,
+                    'epic_id': epic_id,
+                    'old_name': db_name,
+                    'new_name': api_name if is_revealed else db_name,
+                    'update_name': is_revealed,
+                    'game': api_name if is_revealed else db_name,
+                    'type': 'mystery_update'
+                })
+
+    download_tasks = []
+    mystery_updates = {}
+    if retry_download_tasks:
+        print(f"Found {len(retry_download_tasks)} existing games to retry image downloads")
+        download_tasks.extend(retry_download_tasks)
+    if mystery_update_tasks:
+        print(f"Found {len(mystery_update_tasks)} mystery games to update")
+        download_tasks.extend([
+            {k: v for k, v in task.items() if k != 'update_name'}
+            for task in mystery_update_tasks
+        ])
+        mystery_updates = {task['epic_id']: task for task in mystery_update_tasks}
+    return download_tasks, mystery_updates
+
+
+def run_parallel_image_downloads(download_tasks, session):
+    """Run download_image_task for each task; return (successful_paths_set, failures_list)."""
+    successful_downloads = set()
+    failed_downloads = []
+    if not download_tasks:
+        return successful_downloads, failed_downloads
+    print(f"Downloading {len(download_tasks)} images in parallel...")
+    with ThreadPoolExecutor(max_workers=Config.MAX_DOWNLOAD_WORKERS) as executor:
+        future_to_task = {
+            executor.submit(
+                download_image_task,
+                task['url'],
+                task['path'],
+                _download_task_display_name(task),
+                session,
+            ): task
+            for task in download_tasks
+        }
+        for future in as_completed(future_to_task):
+            result = future.result()
+            if result['success']:
+                print(f"✓ Downloaded: {result['game']}")
+                successful_downloads.add(result['path'])
+            else:
+                print(f"✗ Failed: {result['game']} - {result['error']}")
+                failed_downloads.append(result)
+    if failed_downloads:
+        print(
+            f"\n"
+            f"⚠️  {len(failed_downloads)} image downloads failed. "
+            f"These will be retried on the next scrape run."
+        )
+    return successful_downloads, failed_downloads
+
+
+def apply_successful_image_updates_to_db(db, successful_downloads, mystery_updates):
+    """Persist image (and optional mystery reveal name) after successful downloads."""
+    if not successful_downloads:
+        return
+    print("Updating existing games with successfully downloaded images...")
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        updated_count = 0
+        mystery_revealed_count = 0
+        for image_path in successful_downloads:
+            image_filename = os.path.basename(image_path)
+            epic_id = os.path.splitext(image_filename)[0]
+            mystery_info = mystery_updates.get(epic_id)
+            if mystery_info and mystery_info.get('update_name'):
+                cursor.execute("""
+                    UPDATE games
+                    SET name = ?, image_filename = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE epic_id = ? AND platform = 'PC'
+                """, (mystery_info['new_name'], image_filename, epic_id))
+                if cursor.rowcount > 0:
+                    mystery_revealed_count += 1
+                    print(
+                        f"  ✓ Revealed: {mystery_info['old_name']} → {mystery_info['new_name']}"
+                    )
+            else:
+                cursor.execute("""
+                    UPDATE games
+                    SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE epic_id = ? AND platform = 'PC' AND (image_filename IS NULL OR image_filename = '')
+                """, (image_filename, epic_id))
+                if cursor.rowcount > 0:
+                    updated_count += 1
+            if mystery_info and not mystery_info.get('update_name'):
+                cursor.execute("""
+                    UPDATE games
+                    SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE epic_id = ? AND platform = 'PC'
+                """, (image_filename, epic_id))
+        conn.commit()
+        if updated_count > 0:
+            print(f"✓ Updated image_filename for {updated_count} existing games")
+        if mystery_revealed_count > 0:
+            print(f"✓ Revealed and updated {mystery_revealed_count} mystery games")
+
+
+def clear_orphaned_game_image_filenames(db):
+    """Clear DB image_filename when the file is missing or fails validation."""
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, epic_id, name, image_filename FROM games "
+            "WHERE image_filename IS NOT NULL AND image_filename != ''"
+        )
+        for row in cursor.fetchall():
+            img_path = os.path.join(Config.IMAGES_DIR, row['image_filename'])
+            if not is_valid_cached_image(img_path):
+                cursor.execute(
+                    "UPDATE games SET image_filename = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (row['id'],)
+                )
+                if cursor.rowcount > 0:
+                    print(f"  Cleared orphaned image ref: {row['name']}")
+
+
+def cleanup_legacy_next_game_files(kept_basenames):
+    """Remove legacy next-game*.jpg files that are no longer tied to upcoming promos."""
+    kept = set(kept_basenames)
+    for filename in os.listdir(Config.IMAGES_DIR):
+        if (filename.startswith("next-game") and
+                filename.endswith(".jpg") and
+                filename not in kept):
+            try:
+                filepath = os.path.join(Config.IMAGES_DIR, filename)
+                os.remove(filepath)
+                print(f"Removed unused file: {filename}")
+            except OSError as e:
+                print(f"⚠️  Failed to remove {filename}: {e}")
+
+
 def scrape_epic_free_games():
     # Initialize database
     db = DatabaseManager()
@@ -473,7 +703,6 @@ def scrape_epic_free_games():
     new_games = []  # Track new current games
     current_games = []  # Track all current free games (for counts)
     next_games = []  # Track upcoming games
-    existing_next_game_images = []  # Track images for next games
 
     # Performance: Create session for connection pooling
     session = requests.Session()
@@ -491,35 +720,6 @@ def scrape_epic_free_games():
 
         api_data = response.json()
 
-        # Performance: Early exit if API response unchanged
-        current_hash = compute_api_hash(api_data)
-        previous_hash = load_previous_api_hash()
-
-        if current_hash == previous_hash and previous_hash is not None:
-            print("✓ API response unchanged - no new data to process")
-            db.record_scrape_run(
-                games_found=0,
-                new_games=0,
-                current=0,
-                upcoming=0,
-                success=True
-            )
-            write_scrape_run_summary({
-                'success': True,
-                'early_exit_api_unchanged': True,
-                'duration_seconds': round(time.monotonic() - run_started, 3),
-                'api_hash_sha256': current_hash,
-                'catalog_element_count': None,
-                'games_found': None,
-                'new_games': 0,
-                'current_free': 0,
-                'upcoming': 0,
-                'image_download_tasks': 0,
-                'image_download_failures': [],
-            })
-            return
-
-        print(f"API response changed - processing updates...")
         try:
             games = api_data['data']['Catalog']['searchStore']['elements']
         except (KeyError, TypeError) as e:
@@ -527,6 +727,49 @@ def scrape_epic_free_games():
         if not isinstance(games, list):
             raise ValueError("API did not return a list of games")
 
+        current_hash = compute_api_hash(api_data)
+        previous_hash = load_previous_api_hash()
+
+        if current_hash == previous_hash and previous_hash is not None:
+            print("✓ API response unchanged — skipping full catalog update; running image maintenance")
+            maintenance_tasks, mystery_updates = collect_retry_and_mystery_download_tasks(
+                all_games, games
+            )
+            successful_downloads, failed_downloads = run_parallel_image_downloads(
+                maintenance_tasks, session
+            )
+            apply_successful_image_updates_to_db(db, successful_downloads, mystery_updates)
+            clear_orphaned_game_image_filenames(db)
+            cleanup_legacy_next_game_files(collect_upcoming_promo_image_filenames(games))
+
+            save_api_hash(current_hash)
+            db.record_scrape_run(
+                games_found=len(games),
+                new_games=0,
+                current=0,
+                upcoming=0,
+                success=True
+            )
+            db.update_statistics_cache()
+            write_scrape_run_summary({
+                'success': True,
+                'early_exit_api_unchanged': True,
+                'duration_seconds': round(time.monotonic() - run_started, 3),
+                'api_hash_sha256': current_hash,
+                'catalog_element_count': len(games),
+                'games_found': len(games),
+                'new_games': 0,
+                'current_free': 0,
+                'upcoming': 0,
+                'image_download_tasks': len(maintenance_tasks),
+                'image_download_failures': [
+                    {'game': r['game'], 'error': r.get('error', '')}
+                    for r in failed_downloads
+                ],
+            })
+            return
+
+        print(f"API response changed - processing updates...")
         now = datetime.now(timezone.utc)
 
         # Performance: Collect data for batch database operations
@@ -607,10 +850,6 @@ def scrape_epic_free_games():
                             'end_date': offer['endDate'],
                             'status': 'upcoming'
                         })
-
-                        # Track which upcoming game images are in use
-                        if image_filename:
-                            existing_next_game_images.append(image_filename)
 
                         # Add to next games
                         next_games.append({
@@ -707,121 +946,14 @@ def scrape_epic_free_games():
                             'Availability': date_period
                         })
 
-        # Also check for existing games in database that are missing images and appear in current API
-        # Includes: 1) games with no image_filename, 2) games with image_filename but file doesn't exist
-        print("Checking for existing games missing images...")
-        existing_games_missing_images = {}
-        for g in all_games:
-            if g.get('platform') != 'PC':
-                continue
-            if not g.get('image_filename'):
-                existing_games_missing_images[g['epic_id']] = g
-            else:
-                img_path = os.path.join(Config.IMAGES_DIR, g['image_filename'])
-                if not is_valid_cached_image(img_path):
-                    existing_games_missing_images[g['epic_id']] = g
-        
-        # Check for mystery games that have been revealed (name changed from "Mystery Game X")
-        mystery_games_to_update = []
-        for g in all_games:
-            if g.get('platform') == 'PC' and 'mystery' in g['name'].lower():
-                mystery_games_to_update.append(g)
-        
-        api_games_by_id = {game.get('id'): game for game in games if game.get('id')}
-        retry_download_tasks = []
-        mystery_update_tasks = []
-        mystery_updates = {}  # Store mystery game update info
-        
-        # Check for games missing images
-        for epic_id, db_game in existing_games_missing_images.items():
-            api_game = api_games_by_id.get(epic_id)
-            if api_game:
-                image_url = get_game_image_url(api_game)
-                if image_url:
-                    image_filename = f"{sanitize_filename(epic_id)}.jpg"
-                    image_path = os.path.join(Config.IMAGES_DIR, image_filename)
-                    if not is_valid_cached_image(image_path):
-                        retry_download_tasks.append({
-                            'url': image_url,
-                            'path': image_path,
-                            'game': db_game['name'],
-                            'type': 'retry'
-                        })
-        
-        # Check for mystery games that have been revealed or have updated images
-        for db_game in mystery_games_to_update:
-            epic_id = db_game['epic_id']
-            api_game = api_games_by_id.get(epic_id)
-            if api_game:
-                api_name = api_game.get('title', '')
-                db_name = db_game['name']
-                
-                # Check if mystery game has been revealed (name changed and no longer contains "mystery")
-                is_revealed = ('mystery' not in api_name.lower() and 
-                              api_name.lower() != db_name.lower())
-                
-                # Always update image for mystery games if they appear in API (images may have changed)
-                image_url = get_game_image_url(api_game)
-                if image_url:
-                    image_filename = f"{sanitize_filename(epic_id)}.jpg"
-                    image_path = os.path.join(Config.IMAGES_DIR, image_filename)
-                    
-                    # Always download new image for mystery games (even if file exists, in case image changed)
-                    mystery_update_tasks.append({
-                        'url': image_url,
-                        'path': image_path,
-                        'epic_id': epic_id,
-                        'old_name': db_name,
-                        'new_name': api_name if is_revealed else db_name,
-                        'update_name': is_revealed,
-                        'game': api_name if is_revealed else db_name,
-                        'type': 'mystery_update'
-                    })
-        
-        if retry_download_tasks:
-            print(f"Found {len(retry_download_tasks)} existing games to retry image downloads")
-            download_tasks.extend(retry_download_tasks)
-        
-        if mystery_update_tasks:
-            print(f"Found {len(mystery_update_tasks)} mystery games to update")
-            # Keep enough fields for logging + future-proofing; only exclude fields not needed by downloader.
-            download_tasks.extend([
-                {k: v for k, v in task.items() if k != 'update_name'}
-                for task in mystery_update_tasks
-            ])
-            # Store mystery update info separately for later processing
-            mystery_updates.update({task['epic_id']: task for task in mystery_update_tasks})
-
-        # Performance: Execute parallel image downloads
-        successful_downloads = set()  # Track successfully downloaded image paths
-        failed_downloads = []  # Track failed downloads for logging
-        if download_tasks:
-            print(f"Downloading {len(download_tasks)} images in parallel...")
-            with ThreadPoolExecutor(max_workers=Config.MAX_DOWNLOAD_WORKERS) as executor:
-                # Submit all download tasks
-                future_to_task = {
-                    executor.submit(
-                        download_image_task,
-                        task['url'],
-                        task['path'],
-                        _download_task_display_name(task),
-                        session,
-                    ): task
-                    for task in download_tasks
-                }
-
-                # Process results as they complete
-                for future in as_completed(future_to_task):
-                    result = future.result()
-                    if result['success']:
-                        print(f"✓ Downloaded: {result['game']}")
-                        successful_downloads.add(result['path'])
-                    else:
-                        print(f"✗ Failed: {result['game']} - {result['error']}")
-                        failed_downloads.append(result)
-            
-            if failed_downloads:
-                print(f"\n⚠️  {len(failed_downloads)} image downloads failed. These will be retried on the next scrape run.")
+        existing_next_game_images = collect_upcoming_promo_image_filenames(games)
+        extra_tasks, mystery_updates = collect_retry_and_mystery_download_tasks(
+            all_games, games
+        )
+        download_tasks.extend(extra_tasks)
+        successful_downloads, failed_downloads = run_parallel_image_downloads(
+            download_tasks, session
+        )
 
         # Only set image_filename if the image file actually exists
         for game_data in games_to_insert:
@@ -848,83 +980,9 @@ def scrape_epic_free_games():
         print(f"Batch inserting {len(promotions_to_insert)} promotions...")
         db.batch_insert_promotions(promotions_to_insert)
 
-        # Update image_filename for existing games that successfully downloaded images (retry downloads)
-        # Also handle mystery games that have been revealed
-        if successful_downloads:
-            print("Updating existing games with successfully downloaded images...")
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                updated_count = 0
-                mystery_revealed_count = 0
-                
-                for image_path in successful_downloads:
-                    image_filename = os.path.basename(image_path)
-                    epic_id = os.path.splitext(image_filename)[0]  # Remove .jpg extension
-                    
-                    # Check if this is a mystery game update
-                    mystery_info = mystery_updates.get(epic_id)
-                    
-                    if mystery_info and mystery_info.get('update_name'):
-                        # Mystery game revealed - update both name and image
-                        cursor.execute("""
-                            UPDATE games 
-                            SET name = ?, image_filename = ?, updated_at = CURRENT_TIMESTAMP
-                            WHERE epic_id = ? AND platform = 'PC'
-                        """, (mystery_info['new_name'], image_filename, epic_id))
-                        if cursor.rowcount > 0:
-                            mystery_revealed_count += 1
-                            print(f"  ✓ Revealed: {mystery_info['old_name']} → {mystery_info['new_name']}")
-                    else:
-                        # Regular image update (for games missing images)
-                        cursor.execute("""
-                            UPDATE games 
-                            SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
-                            WHERE epic_id = ? AND platform = 'PC' AND (image_filename IS NULL OR image_filename = '')
-                        """, (image_filename, epic_id))
-                        if cursor.rowcount > 0:
-                            updated_count += 1
-                    # Always update image_filename if it changed (for mystery games that already had images)
-                    if mystery_info and not mystery_info.get('update_name'):
-                        cursor.execute("""
-                            UPDATE games 
-                            SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
-                            WHERE epic_id = ? AND platform = 'PC'
-                        """, (image_filename, epic_id))
-                
-                conn.commit()
-                if updated_count > 0:
-                    print(f"✓ Updated image_filename for {updated_count} existing games")
-                if mystery_revealed_count > 0:
-                    print(f"✓ Revealed and updated {mystery_revealed_count} mystery games")
-
-        # Cleanup: clear image_filename for games where the file doesn't exist (orphaned references)
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id, epic_id, name, image_filename FROM games WHERE image_filename IS NOT NULL AND image_filename != ''"
-            )
-            for row in cursor.fetchall():
-                img_path = os.path.join(Config.IMAGES_DIR, row['image_filename'])
-                if not is_valid_cached_image(img_path):
-                    cursor.execute(
-                        "UPDATE games SET image_filename = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                        (row['id'],)
-                    )
-                    if cursor.rowcount > 0:
-                        print(f"  Cleared orphaned image ref: {row['name']}")
-
-        # Cleanup old next-game images
-        for filename in os.listdir(Config.IMAGES_DIR):
-            # Security: Validate filename before deletion
-            if (filename.startswith("next-game") and
-                filename.endswith(".jpg") and
-                filename not in existing_next_game_images):
-                try:
-                    filepath = os.path.join(Config.IMAGES_DIR, filename)
-                    os.remove(filepath)
-                    print(f"Removed unused file: {filename}")
-                except OSError as e:
-                    print(f"⚠️  Failed to remove {filename}: {e}")
+        apply_successful_image_updates_to_db(db, successful_downloads, mystery_updates)
+        clear_orphaned_game_image_filenames(db)
+        cleanup_legacy_next_game_files(existing_next_game_images)
 
         print(f"Data scraped successfully. Found {len(new_games)} new games.")
 

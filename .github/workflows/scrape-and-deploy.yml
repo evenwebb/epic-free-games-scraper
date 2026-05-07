@@ -9,6 +9,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitattributes'
 
 permissions:
   contents: write
@@ -21,13 +25,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Lightweight check: fetch API and compare hash. Skip full scrape when unchanged.
-  check-api:
+  # Single job: hash check first; heavy steps run only when API payload changed (saves a full
+  # second-runner checkout + Python setup vs the old two-job layout).
+  scrape-and-build:
     runs-on: ubuntu-22.04
-    outputs:
-      api_unchanged: ${{ steps.check.outputs.api_unchanged }}
+    timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
@@ -35,36 +40,22 @@ jobs:
         id: check
         run: python3 scripts/api_hash_check.py
 
-      - if: always()
-        run: |
-          echo "### 🎮 Epic Games Scraper" >> $GITHUB_STEP_SUMMARY
-          echo "- **API unchanged**: ${{ steps.check.outputs.api_unchanged == 'true' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Skipped scrape**: ${{ steps.check.outputs.api_unchanged == 'true' }}" >> $GITHUB_STEP_SUMMARY
-
-  scrape-and-build:
-    needs: check-api
-    if: needs.check-api.outputs.api_unchanged != 'true'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
+        if: steps.check.outputs.api_unchanged != 'true'
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: requirements.txt
 
-      - name: Scrape
-        id: scrape
+      - name: Install dependencies and scrape
+        if: steps.check.outputs.api_unchanged != 'true'
         run: |
           pip install -q -r requirements.txt
           python3 scrape_epic_games.py
 
-      - name: Check changes
+      - name: Check db/images changes
         id: changes
+        if: steps.check.outputs.api_unchanged != 'true'
         run: |
           # Only build/deploy when db or images changed - skip if only .api_hash changed
           if git diff --quiet output/epic_games.db output/images/ 2>/dev/null; then
@@ -74,7 +65,7 @@ jobs:
           fi
 
       - name: Build and commit
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'
         run: |
           python3 generate_website.py
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -83,33 +74,35 @@ jobs:
           git diff --staged --quiet || (git commit -m "Update database and images - $(date -u +"%Y-%m-%d %H:%M UTC")" && git push)
 
       - name: Commit .api_hash only (when no db/images changes)
-        if: steps.changes.outputs.changed == 'false'
+        if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'false'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add output/.api_hash
           git diff --staged --quiet || (git commit -m "Update API hash - $(date -u +"%Y-%m-%d %H:%M UTC")" && git push)
 
-      - if: steps.changes.outputs.changed == 'true'
-        uses: actions/configure-pages@v4
+      - if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'
+        uses: actions/configure-pages@v6
 
-      - if: steps.changes.outputs.changed == 'true'
-        uses: actions/upload-pages-artifact@v3
+      - if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v4
         with:
           path: './website'
 
       - name: Deploy to GitHub Pages
         id: deploy
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'
         continue-on-error: true
         uses: actions/deploy-pages@v4
 
       - name: Deploy to GitHub Pages (retry)
-        if: steps.changes.outputs.changed == 'true' && steps.deploy.outcome == 'failure'
+        if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true' && steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v4
 
       - if: always()
         run: |
           echo "### 🎮 Epic Games Scraper" >> $GITHUB_STEP_SUMMARY
+          echo "- **API unchanged**: ${{ steps.check.outputs.api_unchanged == 'true' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Skipped heavy steps**: ${{ steps.check.outputs.api_unchanged == 'true' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployed**: ${{ steps.changes.outputs.changed == 'true' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed**: ${{ steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true' }}" >> $GITHUB_STEP_SUMMARY

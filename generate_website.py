@@ -8,8 +8,15 @@ import html
 import json
 import os
 import shutil
+import sys
 from datetime import datetime, timezone
 from db_manager import DatabaseManager
+
+_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png')
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, '').strip().lower() in ('1', 'true', 'yes', 'on')
 
 def ensure_directory(path):
     """Create directory if it doesn't exist"""
@@ -44,9 +51,18 @@ def copy_images(db):
     skipped = 0
     removed = 0
 
+    missing_sources = []
+    for filename in sorted(needed_images):
+        lower = filename.lower()
+        if not lower.endswith(_IMAGE_EXTENSIONS):
+            continue
+        source_path = os.path.join(source, filename)
+        if not os.path.exists(source_path):
+            missing_sources.append(filename)
+
     # Copy new or modified images (only those referenced in DB)
     for filename in needed_images:
-        if not filename.endswith(('.jpg', '.png', '.jpeg')):
+        if not filename.lower().endswith(_IMAGE_EXTENSIONS):
             continue
         source_path = os.path.join(source, filename)
         if not os.path.exists(source_path):
@@ -70,12 +86,34 @@ def copy_images(db):
 
     # Remove images from dest that are no longer needed
     for filename in dest_files:
-        if filename.endswith(('.jpg', '.png', '.jpeg')) and filename not in needed_images:
+        if filename.lower().endswith(_IMAGE_EXTENSIONS) and filename not in needed_images:
             dest_path = os.path.join(dest, filename)
             os.remove(dest_path)
             removed += 1
 
     print(f"Images sync: {copied} copied, {skipped} skipped, {removed} removed ({len(needed_images)} total)")
+
+    if missing_sources:
+        n = len(missing_sources)
+        preview = missing_sources[:15]
+        suffix = f" (+{n - len(preview)} more)" if n > len(preview) else ""
+        print(
+            f"⚠️  {n} image file(s) referenced in the database are missing under {source!r}: "
+            f"{', '.join(preview)}{suffix}",
+            file=sys.stderr,
+        )
+        in_ci = os.environ.get('CI') == 'true'
+        force_fail = _env_truthy('GENERATE_WEBSITE_FAIL_ON_MISSING_IMAGES')
+        allow_missing = _env_truthy('GENERATE_WEBSITE_ALLOW_MISSING_IMAGES')
+        if force_fail or (in_ci and not allow_missing):
+            print(
+                "Error: Refusing to publish with missing images. "
+                "Restore files under output/images, or re-run the scraper. "
+                "To override in CI only if you accept broken thumbnails: "
+                "set GENERATE_WEBSITE_ALLOW_MISSING_IMAGES=1.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
 
 def export_data_json(db):
     """Export database data to JSON for website consumption"""
