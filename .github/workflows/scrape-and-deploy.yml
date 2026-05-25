@@ -66,20 +66,36 @@ jobs:
 
       - name: Build and commit
         if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 generate_website.py
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add output/epic_games.db output/images/ output/.api_hash
-          git diff --staged --quiet || (git commit -m "Update database and images - $(date -u +"%Y-%m-%d %H:%M UTC")" && git push)
+          if ! git diff --staged --quiet; then
+            git commit -m "Update database and images - $(date -u +"%Y-%m-%d %H:%M UTC")"
+            auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
+            git -c http.https://github.com/.extraheader= \
+              -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+              push origin HEAD:main
+          fi
 
       - name: Commit .api_hash only (when no db/images changes)
         if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add output/.api_hash
-          git diff --staged --quiet || (git commit -m "Update API hash - $(date -u +"%Y-%m-%d %H:%M UTC")" && git push)
+          if ! git diff --staged --quiet; then
+            git commit -m "Update API hash - $(date -u +"%Y-%m-%d %H:%M UTC")"
+            auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
+            git -c http.https://github.com/.extraheader= \
+              -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+              push origin HEAD:main
+          fi
 
       - if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'
         uses: actions/configure-pages@v6
@@ -96,6 +112,7 @@ jobs:
         uses: actions/deploy-pages@v5
 
       - name: Deploy to GitHub Pages (retry)
+        id: deploy_retry
         if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true' && steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5
 
@@ -105,4 +122,4 @@ jobs:
           echo "- **API unchanged**: ${{ steps.check.outputs.api_unchanged == 'true' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Skipped heavy steps**: ${{ steps.check.outputs.api_unchanged == 'true' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployed**: ${{ steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed**: ${{ steps.deploy.outcome == 'success' || steps.deploy_retry.outcome == 'success' }}" >> $GITHUB_STEP_SUMMARY
