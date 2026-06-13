@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 
 import requests
@@ -452,7 +453,6 @@ def scrape_epic_free_games():
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        import traceback
         traceback.print_exc()
         try:
             db.record_scrape_run(

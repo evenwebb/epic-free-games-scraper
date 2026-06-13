@@ -151,9 +151,9 @@ def export_data_json(db):
             'originalPrice': original_price,
             'currency': currency,
             'description': game.get('description'),
-            'developer': game.get('developer'),
-            'publisher': game.get('publisher'),
             'sellerName': game.get('seller_name'),
+            'offerType': game.get('offer_type'),
+            'effectiveDate': game.get('effective_date'),
             'firstFreeDate': game.get('first_free_date'),
             'lastFreeDate': game.get('last_free_date'),
             'startDate': game.get('start_date'),
@@ -492,10 +492,10 @@ def generate_current_games_html(games):
             except (ValueError, TypeError, OSError):
                 pass
 
-        dev_html = ''
-        dev = game.get('developer')
-        if dev:
-            dev_html = f'<div class="game-developer">{escape(dev)}</div>'
+        seller_html = ''
+        seller = game.get('sellerName')
+        if seller:
+            seller_html = f'<div class="game-seller">{escape(seller)}</div>'
 
         desc = game.get('description')
         desc_html = f'<p class="game-desc">{escape(desc)}</p>' if desc else ''
@@ -507,7 +507,7 @@ def generate_current_games_html(games):
                 </div>
                 <div class="hero-card-content">
                     <h3>{name}</h3>
-                    {dev_html}
+                    {seller_html}
                     {start_date_html}
                     {price_html}
                     {desc_html}

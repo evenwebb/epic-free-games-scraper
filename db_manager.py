@@ -48,9 +48,9 @@ class DatabaseManager:
                     product_slug TEXT,
                     url_slug TEXT,
                     description TEXT,
-                    developer TEXT,
-                    publisher TEXT,
                     seller_name TEXT,
+                    offer_type TEXT,
+                    effective_date TIMESTAMP,
                     last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -66,12 +66,12 @@ class DatabaseManager:
             if 'currency_code' not in cols:
                 cursor.execute("ALTER TABLE games ADD COLUMN currency_code TEXT")
             if 'last_checked' not in cols:
-                cursor.execute("ALTER TABLE games ADD COLUMN last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                cursor.execute("ALTER TABLE games ADD COLUMN last_checked TIMESTAMP")
             for col, col_type in [
                 ('description', 'TEXT'),
-                ('developer', 'TEXT'),
-                ('publisher', 'TEXT'),
                 ('seller_name', 'TEXT'),
+                ('offer_type', 'TEXT'),
+                ('effective_date', 'TIMESTAMP'),
             ]:
                 if col not in cols:
                     cursor.execute(f"ALTER TABLE games ADD COLUMN {col} {col_type}")
@@ -88,7 +88,7 @@ class DatabaseManager:
 
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_games_created
-                ON games(created_at DESC)
+                ON games(created_at)
             """)
 
             # Promotions table - tracks each free game promotion period
@@ -119,7 +119,7 @@ class DatabaseManager:
 
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_promotions_start_date
-                ON promotions(start_date DESC)
+                ON promotions(start_date)
             """)
 
             cursor.execute("""
@@ -241,9 +241,9 @@ class DatabaseManager:
                                 product_slug = COALESCE(?, product_slug),
                                 url_slug = COALESCE(?, url_slug),
                                 description = COALESCE(?, description),
-                                developer = COALESCE(?, developer),
-                                publisher = COALESCE(?, publisher),
                                 seller_name = COALESCE(?, seller_name),
+                                offer_type = COALESCE(?, offer_type),
+                                effective_date = COALESCE(?, effective_date),
                                 last_checked = CURRENT_TIMESTAMP,
                                 updated_at = CURRENT_TIMESTAMP
                             WHERE id = ?
@@ -252,8 +252,8 @@ class DatabaseManager:
                               price, game_data.get('currency_code'),
                               game_data.get('sandbox_id'), game_data.get('mapping_slug'),
                               game_data.get('product_slug'), game_data.get('url_slug'),
-                              game_data.get('description'), game_data.get('developer'),
-                              game_data.get('publisher'), game_data.get('seller_name'),
+                              game_data.get('description'), game_data.get('seller_name'),
+                              game_data.get('offer_type'), game_data.get('effective_date'),
                               game_id))
                     else:
                         cursor.execute("""
@@ -266,9 +266,9 @@ class DatabaseManager:
                                 product_slug = COALESCE(?, product_slug),
                                 url_slug = COALESCE(?, url_slug),
                                 description = COALESCE(?, description),
-                                developer = COALESCE(?, developer),
-                                publisher = COALESCE(?, publisher),
                                 seller_name = COALESCE(?, seller_name),
+                                offer_type = COALESCE(?, offer_type),
+                                effective_date = COALESCE(?, effective_date),
                                 last_checked = CURRENT_TIMESTAMP,
                                 updated_at = CURRENT_TIMESTAMP
                             WHERE id = ?
@@ -276,8 +276,8 @@ class DatabaseManager:
                               game_data.get('epic_rating'), game_data.get('image_filename'),
                               game_data.get('sandbox_id'), game_data.get('mapping_slug'),
                               game_data.get('product_slug'), game_data.get('url_slug'),
-                              game_data.get('description'), game_data.get('developer'),
-                              game_data.get('publisher'), game_data.get('seller_name'),
+                              game_data.get('description'), game_data.get('seller_name'),
+                              game_data.get('offer_type'), game_data.get('effective_date'),
                               game_id))
                 else:
                     inserts.append((
@@ -286,8 +286,8 @@ class DatabaseManager:
                         game_data.get('original_price_cents'), game_data.get('currency_code'),
                         game_data.get('sandbox_id'), game_data.get('mapping_slug'),
                         game_data.get('product_slug'), game_data.get('url_slug'),
-                        game_data.get('description'), game_data.get('developer'),
-                        game_data.get('publisher'), game_data.get('seller_name'),
+                        game_data.get('description'), game_data.get('seller_name'),
+                        game_data.get('offer_type'), game_data.get('effective_date'),
                     ))
 
             if inserts:
@@ -295,7 +295,7 @@ class DatabaseManager:
                     INSERT INTO games (epic_id, platform, name, link, epic_rating,
                                      image_filename, original_price_cents, currency_code,
                                      sandbox_id, mapping_slug, product_slug, url_slug,
-                                     description, developer, publisher, seller_name)
+                                     description, seller_name, offer_type, effective_date)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, inserts)
                 # Map IDs for newly inserted rows

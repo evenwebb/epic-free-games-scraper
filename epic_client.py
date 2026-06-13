@@ -117,20 +117,27 @@ def get_game_link(game):
 
 
 def extract_game_metadata(game):
-    """Extract additional metadata fields from the API game object."""
+    """Extract additional metadata fields from the API game object.
+
+    The freeGamesPromotions endpoint returns: id, title, description,
+    namespace, offerType, seller, effectiveDate, viewableDate, tags,
+    categories, keyImages, price, promotions, catalogNs, offerMappings,
+    productSlug, urlSlug, customAttributes.
+    It does NOT return developerDisplayName or publisherDisplayName.
+    """
     catalog_ns = game.get('catalogNs') or {}
     mappings = catalog_ns.get('mappings') or []
     mapping_slug = mappings[0].get('pageSlug') if mappings else None
     seller = game.get('seller') or {}
     return {
         'description': (game.get('description') or '').strip() or None,
-        'developer': (game.get('developerDisplayName') or '').strip() or None,
-        'publisher': (game.get('publisherDisplayName') or '').strip() or None,
         'seller_name': (seller.get('name') or '').strip() or None,
-        'sandbox_id': game.get('namespace') or game.get('sandboxId'),
+        'sandbox_id': game.get('namespace'),
         'mapping_slug': mapping_slug,
         'product_slug': game.get('productSlug'),
         'url_slug': game.get('urlSlug'),
+        'offer_type': game.get('offerType'),
+        'effective_date': game.get('effectiveDate'),
     }
 
 
