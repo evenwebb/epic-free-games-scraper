@@ -665,6 +665,65 @@ html {
     background: rgba(255, 193, 7, 0.15);
     color: #ffc107;
 }
+.badge-tag {
+    background: rgba(0, 200, 83, 0.15);
+    color: #00c853;
+}
+.badge-category {
+    background: rgba(156, 39, 176, 0.15);
+    color: #ce93d8;
+}
+
+/* Game detail pages */
+.game-detail-layout {
+    display: flex;
+    gap: 2rem;
+    margin-top: 2rem;
+    flex-wrap: wrap;
+}
+.game-detail-image {
+    max-width: 400px;
+    width: 100%;
+    border-radius: 8px;
+}
+.game-detail-info {
+    flex: 1;
+    min-width: 280px;
+    line-height: 1.8;
+}
+.game-detail-info p {
+    margin: 0.3rem 0;
+    color: var(--color-text);
+}
+.game-detail-tags,
+.game-detail-cats {
+    margin: 0.8rem 0;
+}
+.game-detail-desc {
+    margin-top: 1.5rem;
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+}
+
+/* Theme toggle */
+.theme-toggle {
+    background: var(--color-surface-light);
+    border: 1px solid var(--color-text-secondary);
+    color: var(--color-text);
+    font-size: 1.2rem;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    transition: background 0.2s;
+}
+.theme-toggle:hover {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+}
 
 /* Game card metadata */
 .game-seller {

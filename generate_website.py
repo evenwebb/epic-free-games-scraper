@@ -168,15 +168,21 @@ def export_data_json(db):
             'rating': game['epic_rating'],
             'image': f"images/{game['image_filename']}" if game['image_filename'] else None,
             'originalPrice': original_price,
+            'discountPrice': (game.get('discount_price_cents') / 100.0) if game.get('discount_price_cents') else None,
             'currency': currency,
             'description': game.get('description'),
             'sellerName': game.get('seller_name'),
+            'sellerId': game.get('seller_id'),
             'offerType': game.get('offer_type'),
+            'listingStatus': game.get('listing_status'),
+            'isCodeRedemptionOnly': bool(game.get('is_code_redemption_only')),
+            'isBlockchainUsed': bool(game.get('is_blockchain_used')),
             'effectiveDate': game.get('effective_date'),
             'viewableDate': game.get('viewable_date'),
             'expiryDate': game.get('expiry_date'),
             'tagIds': game.get('tag_ids'),
             'tagNames': resolve_tag_names(game.get('tag_ids')),
+            'categories': game.get('categories'),
             'firstFreeDate': game.get('first_free_date'),
             'lastFreeDate': game.get('last_free_date'),
             'startDate': game.get('start_date'),
@@ -749,8 +755,22 @@ def generate_game_pages(data):
         currency = g.get('currency', 'GBP')
         price_str = format_price(price, currency) if price else 'Unknown'
         dur = g.get('freeDurationHours')
-        dur_str = f"{int(dur/24)} days" if dur and dur >= 24 else (f"{int(dur)} hours" if dur else 'Unknown')
+        dur_str = f'{int(dur/24)} days' if dur and dur >= 24 else (f'{int(dur)} hours' if dur else 'Unknown')
         fc = g.get('freeCount', 1)
+        tags_html = ''
+        tags = g.get('tagNames')
+        if tags:
+            tags_html = ' '.join(f'<span class="badge badge-tag">{html.escape(t)}</span>' for t in tags.split(','))
+        offer_type = g.get('offerType') or ''
+        listing_status = g.get('listingStatus') or ''
+        code_only = 'Yes' if g.get('isCodeRedemptionOnly') else 'No'
+        first_free = g.get('firstFreeDate', '')[:10] if g.get('firstFreeDate') else ''
+        last_free = g.get('lastFreeDate', '')[:10] if g.get('lastFreeDate') else ''
+        cats = g.get('categories', '')
+        cats_html = ''
+        if cats:
+            cats_html = ' '.join(f'<span class="badge badge-category">{html.escape(c)}</span>' for c in cats.split(','))
+
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -775,6 +795,12 @@ def generate_game_pages(data):
                 <p><strong>Normal price:</strong> {price_str}</p>
                 <p><strong>Free duration:</strong> {dur_str}</p>
                 {f'<p><strong>Previously free:</strong> {fc - 1} times</p>' if fc > 1 else ''}
+                {f'<p><strong>First free:</strong> {first_free}</p>' if first_free else ''}
+                {f'<p><strong>Last free:</strong> {last_free}</p>' if last_free else ''}
+                {f'<p><strong>Offer type:</strong> {offer_type}</p>' if offer_type else ''}
+                <p><strong>Code redemption:</strong> {code_only}</p>
+                {f'<div class="game-detail-tags">{tags_html}</div>' if tags_html else ''}
+                {f'<div class="game-detail-cats">{cats_html}</div>' if cats_html else ''}
                 {f'<p class="game-detail-desc">{desc}</p>' if desc else ''}
                 <a href="{link}" target="_blank" rel="noopener" class="cta-button">View on Epic Games Store</a>
             </div>

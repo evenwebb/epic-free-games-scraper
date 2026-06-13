@@ -328,7 +328,7 @@ def scrape_epic_free_games():
                             f"{format_date(offer['startDate'])} - "
                             f"{format_date(offer['endDate'])}"
                         )
-                        original_price_cents, currency_code = get_game_price(game)
+                        original_price_cents, discount_price_cents, currency_code = get_game_price(game)
                         upcoming_game_id = sanitize_filename(
                             game.get('id', game_link.split('/')[-1])
                         )
@@ -349,6 +349,7 @@ def scrape_epic_free_games():
                             'platform': 'PC',
                             'image_filename': image_filename,
                             'original_price_cents': original_price_cents,
+                            'discount_price_cents': discount_price_cents,
                             'currency_code': currency_code,
                             **meta,
                         })
@@ -385,9 +386,10 @@ def scrape_epic_free_games():
                         game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
                         date_period = f"Free Now - {format_date(offer['endDate'])}"
 
-                        original_price_cents, currency_code = get_game_price(game)
+                        original_price_cents, discount_price_cents, currency_code = get_game_price(game)
                         if original_price_cents == 0:
                             original_price_cents = None
+                            discount_price_cents = None
                             currency_code = None
 
                         image_filename = None
@@ -409,6 +411,7 @@ def scrape_epic_free_games():
                             'platform': 'PC',
                             'image_filename': image_filename,
                             'original_price_cents': original_price_cents,
+                            'discount_price_cents': discount_price_cents,
                             'currency_code': currency_code,
                             **meta,
                         })

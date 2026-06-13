@@ -49,11 +49,17 @@ class DatabaseManager:
                     url_slug TEXT,
                     description TEXT,
                     seller_name TEXT,
+                    seller_id TEXT,
                     offer_type TEXT,
+                    listing_status TEXT,
+                    is_code_redemption_only BOOLEAN DEFAULT 0,
+                    is_blockchain_used BOOLEAN DEFAULT 0,
                     effective_date TIMESTAMP,
                     viewable_date TIMESTAMP,
                     expiry_date TIMESTAMP,
                     tag_ids TEXT,
+                    categories TEXT,
+                    discount_price_cents INTEGER,
                     last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -73,11 +79,17 @@ class DatabaseManager:
             for col, col_type in [
                 ('description', 'TEXT'),
                 ('seller_name', 'TEXT'),
+                ('seller_id', 'TEXT'),
                 ('offer_type', 'TEXT'),
+                ('listing_status', 'TEXT'),
+                ('is_code_redemption_only', 'INTEGER'),
+                ('is_blockchain_used', 'INTEGER'),
                 ('effective_date', 'TIMESTAMP'),
                 ('viewable_date', 'TIMESTAMP'),
                 ('expiry_date', 'TIMESTAMP'),
                 ('tag_ids', 'TEXT'),
+                ('categories', 'TEXT'),
+                ('discount_price_cents', 'INTEGER'),
             ]:
                 if col not in cols:
                     cursor.execute(f"ALTER TABLE games ADD COLUMN {col} {col_type}")
@@ -219,30 +231,58 @@ class DatabaseManager:
 
             print(f"Database initialized at {self.db_path}")
 
+    # Fields that use COALESCE in UPDATE (only set when a value is provided),
+    # listed as (column_name, dict_key).
+    _COALESCE_FIELDS = [
+        ('epic_rating', 'epic_rating'),
+        ('image_filename', 'image_filename'),
+        ('sandbox_id', 'sandbox_id'),
+        ('mapping_slug', 'mapping_slug'),
+        ('product_slug', 'product_slug'),
+        ('url_slug', 'url_slug'),
+        ('description', 'description'),
+        ('seller_name', 'seller_name'),
+        ('seller_id', 'seller_id'),
+        ('offer_type', 'offer_type'),
+        ('listing_status', 'listing_status'),
+        ('is_code_redemption_only', 'is_code_redemption_only'),
+        ('is_blockchain_used', 'is_blockchain_used'),
+        ('effective_date', 'effective_date'),
+        ('viewable_date', 'viewable_date'),
+        ('expiry_date', 'expiry_date'),
+        ('tag_ids', 'tag_ids'),
+        ('categories', 'categories'),
+        ('discount_price_cents', 'discount_price_cents'),
+    ]
+
+    # All insert columns (must match DB schema order for games table)
+    _INSERT_COLUMNS = [
+        'epic_id', 'platform', 'name', 'link', 'epic_rating', 'image_filename',
+        'original_price_cents', 'currency_code', 'discount_price_cents',
+        'sandbox_id', 'mapping_slug', 'product_slug', 'url_slug',
+        'description', 'seller_name', 'seller_id', 'offer_type', 'listing_status',
+        'is_code_redemption_only', 'is_blockchain_used',
+        'effective_date', 'viewable_date', 'expiry_date', 'tag_ids', 'categories',
+    ]
+
     def batch_insert_or_update_games(self, games_data):
-        """
-        Batch insert or update multiple games.
-
-        Args:
-            games_data: List of dicts with keys: epic_id, name, link, platform, etc.
-
-        Returns:
-            Dict mapping (epic_id, platform) tuples to game_id
-        """
+        """Batch insert or update multiple games. Returns {(epic_id, platform): game_id} dict."""
         if not games_data:
             return {}
 
         game_id_map = {}
-
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
-            # Single query: fetch all existing games with their current prices
-            cursor.execute(
-                "SELECT id, epic_id, platform, original_price_cents FROM games"
-            )
+            cursor.execute("SELECT id, epic_id, platform, original_price_cents FROM games")
             existing = {(row['epic_id'], row['platform']): (row['id'], row['original_price_cents'])
                         for row in cursor.fetchall()}
+
+            coalesce_set = ' ,'.join(
+                f'{col} = COALESCE(?, {col})' for col, _ in self._COALESCE_FIELDS
+            )
+            coalesce_keys = [k for _, k in self._COALESCE_FIELDS]
+            insert_placeholders = ','.join(['?'] * len(self._INSERT_COLUMNS))
+            insert_cols = ','.join(self._INSERT_COLUMNS)
 
             inserts = []
             for game_data in games_data:
@@ -255,112 +295,42 @@ class DatabaseManager:
                     game_id, existing_price = existing_info
                     game_id_map[key] = game_id
 
-                    # Preserve first captured price
                     price = game_data.get('original_price_cents')
-                    set_price = (
-                        price is not None and price > 0 and existing_price is None
-                    )
+                    set_price = price is not None and price > 0 and existing_price is None
+                    price_sql = ', original_price_cents = ?, currency_code = ?' if set_price else ''
+                    params = [game_data['name'], game_data['link']]
+                    params += [game_data.get(k) for k in coalesce_keys]
                     if set_price:
-                        cursor.execute("""
-                            UPDATE games
-                            SET name = ?, link = ?,
-                                epic_rating = COALESCE(?, epic_rating),
-                                image_filename = COALESCE(?, image_filename),
-                                original_price_cents = ?, currency_code = ?,
-                                sandbox_id = COALESCE(?, sandbox_id),
-                                mapping_slug = COALESCE(?, mapping_slug),
-                                product_slug = COALESCE(?, product_slug),
-                                url_slug = COALESCE(?, url_slug),
-                                description = COALESCE(?, description),
-                                seller_name = COALESCE(?, seller_name),
-                                offer_type = COALESCE(?, offer_type),
-                                effective_date = COALESCE(?, effective_date),
-                                viewable_date = COALESCE(?, viewable_date),
-                                expiry_date = COALESCE(?, expiry_date),
-                                tag_ids = COALESCE(?, tag_ids),
-                                last_checked = CURRENT_TIMESTAMP,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE id = ?
-                        """, (game_data['name'], game_data['link'],
-                              game_data.get('epic_rating'), game_data.get('image_filename'),
-                              price, game_data.get('currency_code'),
-                              game_data.get('sandbox_id'), game_data.get('mapping_slug'),
-                              game_data.get('product_slug'), game_data.get('url_slug'),
-                              game_data.get('description'), game_data.get('seller_name'),
-                              game_data.get('offer_type'), game_data.get('effective_date'),
-                              game_data.get('viewable_date'), game_data.get('expiry_date'),
-                              game_data.get('tag_ids'),
-                              game_id))
-                    else:
-                        cursor.execute("""
-                            UPDATE games
-                            SET name = ?, link = ?,
-                                epic_rating = COALESCE(?, epic_rating),
-                                image_filename = COALESCE(?, image_filename),
-                                sandbox_id = COALESCE(?, sandbox_id),
-                                mapping_slug = COALESCE(?, mapping_slug),
-                                product_slug = COALESCE(?, product_slug),
-                                url_slug = COALESCE(?, url_slug),
-                                description = COALESCE(?, description),
-                                seller_name = COALESCE(?, seller_name),
-                                offer_type = COALESCE(?, offer_type),
-                                effective_date = COALESCE(?, effective_date),
-                                viewable_date = COALESCE(?, viewable_date),
-                                expiry_date = COALESCE(?, expiry_date),
-                                tag_ids = COALESCE(?, tag_ids),
-                                last_checked = CURRENT_TIMESTAMP,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE id = ?
-                        """, (game_data['name'], game_data['link'],
-                              game_data.get('epic_rating'), game_data.get('image_filename'),
-                              game_data.get('sandbox_id'), game_data.get('mapping_slug'),
-                              game_data.get('product_slug'), game_data.get('url_slug'),
-                              game_data.get('description'), game_data.get('seller_name'),
-                              game_data.get('offer_type'), game_data.get('effective_date'),
-                              game_data.get('viewable_date'), game_data.get('expiry_date'),
-                              game_data.get('tag_ids'),
-                              game_id))
+                        params += [price, game_data.get('currency_code')]
+                    params.append(game_id)
+                    cursor.execute(
+                        f"UPDATE games SET name = ?, link = ?, {coalesce_set}{price_sql}, "
+                        f"last_checked = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        params,
+                    )
                 else:
-                    inserts.append((
-                        epic_id, platform, game_data['name'], game_data['link'],
-                        game_data.get('epic_rating'), game_data.get('image_filename'),
-                        game_data.get('original_price_cents'), game_data.get('currency_code'),
-                        game_data.get('sandbox_id'), game_data.get('mapping_slug'),
-                        game_data.get('product_slug'), game_data.get('url_slug'),
-                        game_data.get('description'), game_data.get('seller_name'),
-                        game_data.get('offer_type'), game_data.get('effective_date'),
-                        game_data.get('viewable_date'), game_data.get('expiry_date'),
-                        game_data.get('tag_ids'),
-                    ))
+                    row = tuple(game_data.get(col) for col in self._INSERT_COLUMNS)
+                    inserts.append(row)
 
             if inserts:
-                cursor.executemany("""
-                    INSERT INTO games (epic_id, platform, name, link, epic_rating,
-                                     image_filename, original_price_cents, currency_code,
-                                     sandbox_id, mapping_slug, product_slug, url_slug,
-                                     description, seller_name, offer_type, effective_date,
-                                     viewable_date, expiry_date, tag_ids)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, inserts)
-                # Map IDs for newly inserted rows
-                cursor.execute(
-                    "SELECT id, epic_id, platform FROM games"
+                cursor.executemany(
+                    f"INSERT INTO games ({insert_cols}) VALUES ({insert_placeholders})",
+                    inserts,
                 )
+                cursor.execute("SELECT id, epic_id, platform FROM games")
                 for row in cursor.fetchall():
                     key = (row['epic_id'], row['platform'])
                     if key not in game_id_map:
                         game_id_map[key] = row['id']
 
-            # Update FTS index for new/updated games
+            # Update FTS index
             for game_data in games_data:
-                epic_id = game_data['epic_id']
-                platform = game_data.get('platform', 'PC')
-                gid = game_id_map.get((epic_id, platform))
+                gid = game_id_map.get((game_data['epic_id'], game_data.get('platform', 'PC')))
                 if gid:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO games_fts(rowid, name, description)
-                        VALUES (?, ?, ?)
-                    """, (gid, game_data['name'], game_data.get('description') or ''))
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO games_fts(rowid, name, description) VALUES (?, ?, ?)",
+                        (gid, game_data['name'], game_data.get('description') or ''),
+                    )
 
         return game_id_map
 

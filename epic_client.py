@@ -6,7 +6,7 @@ import json
 import os
 import re
 import socket
-from datetime import datetime, timezone
+from datetime import datetime
 from functools import lru_cache
 from urllib.parse import urlparse
 
@@ -172,18 +172,28 @@ def extract_game_metadata(game):
     seller = game.get('seller') or {}
     tags = game.get('tags') or []
     tag_ids = [t['id'] for t in tags if isinstance(t, dict) and 'id' in t] if isinstance(tags, list) else []
+    categories = game.get('categories') or []
+    category_paths = [c['path'] for c in categories if isinstance(c, dict) and 'path' in c] if isinstance(categories, list) else []
+    attrs = game.get('customAttributes') or {}
+    if isinstance(attrs, list):
+        attrs = {a['key']: a.get('value') for a in attrs if isinstance(a, dict) and 'key' in a}
     return {
         'description': (game.get('description') or '').strip() or None,
         'seller_name': (seller.get('name') or '').strip() or None,
+        'seller_id': (seller.get('id') or '').strip() or None,
         'sandbox_id': game.get('namespace'),
         'mapping_slug': mapping_slug,
         'product_slug': game.get('productSlug'),
         'url_slug': game.get('urlSlug'),
         'offer_type': game.get('offerType'),
+        'listing_status': game.get('status'),
+        'is_code_redemption_only': bool(game.get('isCodeRedemptionOnly')),
         'effective_date': game.get('effectiveDate'),
         'viewable_date': game.get('viewableDate'),
         'expiry_date': game.get('expiryDate'),
         'tag_ids': ','.join(tag_ids) if tag_ids else None,
+        'categories': ','.join(category_paths) if category_paths else None,
+        'is_blockchain_used': attrs.get('isBlockchainUsed') == 'true',
     }
 
 
@@ -200,12 +210,13 @@ def get_game_image_url(game):
 
 
 def get_game_price(game):
-    """Extract original price (cents) and currency code from game API data."""
+    """Extract original price (cents), discount price, and currency code from game API data."""
     price_data = game.get('price', {})
     total_price = price_data.get('totalPrice', {}) if price_data else {}
     original_price_cents = total_price.get('originalPrice')
+    discount_price_cents = total_price.get('discountPrice')
     currency_code = total_price.get('currencyCode', 'USD')
-    return original_price_cents, currency_code
+    return original_price_cents, discount_price_cents, currency_code
 
 
 def epic_free_discount_percentage(offer):
