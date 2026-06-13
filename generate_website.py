@@ -124,10 +124,12 @@ def export_data_json(db):
     platform_counts = db.get_platform_counts()
     games_by_year = db.get_games_by_year()
 
-    # Get current, upcoming, and all games (PC only)
-    current_games = db.get_current_games(platform='PC')
-    upcoming_games = db.get_upcoming_games(platform='PC')
-    all_games = db.get_all_games_chronological(platform='PC')
+    # Get games for all platforms
+    current_games_pc = db.get_current_games(platform='PC')
+    upcoming_games_pc = db.get_upcoming_games(platform='PC')
+    all_games_pc = db.get_all_games_chronological(platform='PC')
+    all_games_ios = db.get_all_games_chronological(platform='iOS')
+    all_games_android = db.get_all_games_chronological(platform='Android')
 
     # Format games for JSON export
     def format_game(game):
@@ -148,11 +150,15 @@ def export_data_json(db):
             'image': f"images/{game['image_filename']}" if game['image_filename'] else None,
             'originalPrice': original_price,
             'currency': currency,
+            'description': game.get('description'),
+            'developer': game.get('developer'),
+            'publisher': game.get('publisher'),
+            'sellerName': game.get('seller_name'),
             'firstFreeDate': game.get('first_free_date'),
             'lastFreeDate': game.get('last_free_date'),
             'startDate': game.get('start_date'),
             'endDate': game.get('end_date'),
-            'status': game.get('all_statuses', '').split(',')[0] if game.get('all_statuses') else None
+            'status': game.get('all_statuses', '').split(',')[0] if game.get('all_statuses') else None,
         }
 
     # Format price statistics
@@ -166,15 +172,21 @@ def export_data_json(db):
     avg_price_display = avg_price / 100.0 if avg_price else None
     current_year_value_display = current_year_value / 100.0 if current_year_value else None
     
-    # Determine currency from stats (most common currency in database)
-    # For now default to GBP since we're using UK region
+    # Determine currency from current games data
     currency_code = 'GBP'
+    for g in current_games_pc:
+        gc = g.get('currency_code')
+        if gc:
+            currency_code = gc
+            break
 
-    # Create main data export (PC only)
+    # Create main data export with all platforms
     data_export = {
         'lastUpdated': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         'statistics': {
             'totalGames': platform_counts.get('PC', 0),
+            'totalGamesIOS': platform_counts.get('iOS', 0),
+            'totalGamesAndroid': platform_counts.get('Android', 0),
             'totalPromotions': stats.get('total_promotions', 0),
             'firstGameDate': stats.get('first_game_date'),
             'avgGamesPerWeek': stats.get('avg_games_per_week', 0),
@@ -182,20 +194,34 @@ def export_data_json(db):
             'totalValue': total_value_display,
             'avgPrice': avg_price_display,
             'currentYearValue': current_year_value_display,
-            'currency': currency_code
+            'currency': currency_code,
         },
-        'currentGames': [format_game(g) for g in current_games],
-        'upcomingGames': [format_game(g) for g in upcoming_games],
-        'allGames': [format_game(g) for g in all_games]
+        'currentGames': [format_game(g) for g in current_games_pc],
+        'upcomingGames': [format_game(g) for g in upcoming_games_pc],
+        'allGames': [format_game(g) for g in all_games_pc],
+        'allGamesIOS': [format_game(g) for g in all_games_ios],
+        'allGamesAndroid': [format_game(g) for g in all_games_android],
+        'gamesByPlatform': {
+            'PC': [format_game(g) for g in all_games_pc],
+            'iOS': [format_game(g) for g in all_games_ios],
+            'Android': [format_game(g) for g in all_games_android],
+        },
     }
 
-    # Save main data file
+    # Save main data file (atomic write: temp file then rename)
     data_file = 'website/data/games.json'
     ensure_directory('website/data')
-    with open(data_file, 'w', encoding='utf-8') as f:
-        json.dump(data_export, f, indent=2, ensure_ascii=False)
+    tmp = data_file + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(data_export, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, data_file)
+    except OSError:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
 
-    print(f"Exported {len(all_games)} games to {data_file}")
+    print(f"Exported {len(all_games_pc)} PC, {len(all_games_ios)} iOS, {len(all_games_android)} Android games to {data_file}")
     return data_export
 
 def format_price(amount, currency='GBP'):
@@ -235,7 +261,15 @@ def generate_html(data):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Epic Games Free Games History - Tracking {stats['totalGames']}+ Free Games Since 2018</title>
-    <meta name="description" content="Complete history of free PC games given away by Epic Games Store since 2018. Track {stats['totalGames']}+ games.">
+    <meta name="description" content="Complete history of free PC, iOS, and Android games given away by Epic Games Store. Track {stats['totalGames']}+ free games given away since 2018.">
+    <meta property="og:title" content="Epic Games Free Games History">
+    <meta property="og:description" content="Complete archive of {stats['totalGames']}+ free games from Epic Games Store since 2018. Browse the full history of every free game.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://evenwebb.github.io/epic-free-games-scraper/">
+    <meta property="og:site_name" content="Epic Games Free Games Tracker">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Epic Games Free Games History">
+    <meta name="twitter:description" content="Complete archive of {stats['totalGames']}+ free games from Epic Games Store.">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/timeline.css">
 </head>
@@ -302,6 +336,12 @@ def generate_html(data):
         <div class="container">
             <div class="search-controls">
                 <input type="search" id="gameSearch" placeholder="Search games..." class="search-input">
+                <select id="platformFilter" class="filter-select">
+                    <option value="all">All Platforms</option>
+                    <option value="PC">PC</option>
+                    <option value="iOS">iOS</option>
+                    <option value="Android">Android</option>
+                </select>
                 <select id="yearFilter" class="filter-select">
                     <option value="all">All Years</option>
                     {generate_year_options(stats['gamesByYear'])}
@@ -410,9 +450,17 @@ def generate_html(data):
 </html>
 '''
 
-    # Write HTML file
-    with open('website/index.html', 'w', encoding='utf-8') as f:
-        f.write(html)
+    # Write HTML file (atomic write)
+    html_path = 'website/index.html'
+    tmp = html_path + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write(html)
+        os.replace(tmp, html_path)
+    except OSError:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
 
     print("Generated index.html")
 
@@ -429,24 +477,28 @@ def generate_current_games_html(games):
     for game in games:
         name = escape(game["name"])
         img_src = escape(game["image"]) if game.get('image') else ''
-        # Add lazy loading to images
         image_html = f'<img src="{img_src}" alt="{name}" loading="lazy">' if game.get('image') else '<div class="no-image">No Image</div>'
 
-        # Format price if available
         price_html = ''
         if game.get('originalPrice') and game.get('originalPrice') > 0:
             currency = game.get('currency', 'GBP')
             price_html = f'<div class="game-price">Value: {format_price(game["originalPrice"], currency)}</div>'
 
-        # Format start date if available
         start_date_html = ''
         if game.get('startDate'):
             try:
-                from datetime import datetime
                 start_date = datetime.fromisoformat(game['startDate'].replace('Z', '+00:00'))
                 start_date_html = f'<div class="game-start-date">Available since: {start_date.strftime("%B %d, %Y")}</div>'
-            except:
+            except (ValueError, TypeError, OSError):
                 pass
+
+        dev_html = ''
+        dev = game.get('developer')
+        if dev:
+            dev_html = f'<div class="game-developer">{escape(dev)}</div>'
+
+        desc = game.get('description')
+        desc_html = f'<p class="game-desc">{escape(desc)}</p>' if desc else ''
 
         html_parts.append(f'''
             <div class="hero-card">
@@ -455,8 +507,10 @@ def generate_current_games_html(games):
                 </div>
                 <div class="hero-card-content">
                     <h3>{name}</h3>
+                    {dev_html}
                     {start_date_html}
                     {price_html}
+                    {desc_html}
                     <div class="countdown" data-end="{game.get("endDate", "")}">Time remaining...</div>
                     <a href="{escape(game["link"])}" target="_blank" rel="noopener" class="cta-button">Get It Free</a>
                 </div>

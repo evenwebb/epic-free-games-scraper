@@ -2,9 +2,7 @@ name: Scrape Epic Games and Deploy to GitHub Pages
 
 on:
   schedule:
-    # 4pm UK daily - GitHub Actions uses UTC. Run at both times so it's correct
-    # when UK switches clocks: 15:00 UTC = 4pm BST (summer), 16:00 UTC = 4pm GMT (winter)
-    - cron: '0 15 * * *'
+    # 4pm UK = 16:00 UTC year-round (4pm GMT in winter, 5pm BST in summer)
     - cron: '0 16 * * *'
   workflow_dispatch:
   push:
@@ -28,11 +26,11 @@ jobs:
   # Single job: hash check first; heavy steps run only when API payload changed (saves a full
   # second-runner checkout + Python setup vs the old two-job layout).
   scrape-and-build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
@@ -43,7 +41,7 @@ jobs:
       - uses: actions/setup-python@v6
         if: steps.check.outputs.api_unchanged != 'true'
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
           cache-dependency-path: requirements.txt
 
@@ -76,9 +74,15 @@ jobs:
           if ! git diff --staged --quiet; then
             git commit -m "Update database and images - $(date -u +"%Y-%m-%d %H:%M UTC")"
             auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
-            git -c http.https://github.com/.extraheader= \
-              -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
-              push origin HEAD:main
+            for attempt in 1 2 3; do
+              if git -c http.https://github.com/.extraheader= \
+                -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+                push origin HEAD:main; then
+                break
+              fi
+              echo "Push attempt $attempt failed, retrying..."
+              git pull --rebase origin main
+            done
           fi
 
       - name: Commit .api_hash only (when no db/images changes)
@@ -92,9 +96,15 @@ jobs:
           if ! git diff --staged --quiet; then
             git commit -m "Update API hash - $(date -u +"%Y-%m-%d %H:%M UTC")"
             auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
-            git -c http.https://github.com/.extraheader= \
-              -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
-              push origin HEAD:main
+            for attempt in 1 2 3; do
+              if git -c http.https://github.com/.extraheader= \
+                -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+                push origin HEAD:main; then
+                break
+              fi
+              echo "Push attempt $attempt failed, retrying..."
+              git pull --rebase origin main
+            done
           fi
 
       - if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'

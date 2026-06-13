@@ -47,6 +47,11 @@ class DatabaseManager:
                     mapping_slug TEXT,
                     product_slug TEXT,
                     url_slug TEXT,
+                    description TEXT,
+                    developer TEXT,
+                    publisher TEXT,
+                    seller_name TEXT,
+                    last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(epic_id, platform)
@@ -54,15 +59,22 @@ class DatabaseManager:
             """)
             
             # Add price columns if they don't exist (migration for existing databases)
-            try:
+            cursor.execute("PRAGMA table_info(games)")
+            cols = {row[1] for row in cursor.fetchall()}
+            if 'original_price_cents' not in cols:
                 cursor.execute("ALTER TABLE games ADD COLUMN original_price_cents INTEGER")
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
-            try:
+            if 'currency_code' not in cols:
                 cursor.execute("ALTER TABLE games ADD COLUMN currency_code TEXT")
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+            if 'last_checked' not in cols:
+                cursor.execute("ALTER TABLE games ADD COLUMN last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            for col, col_type in [
+                ('description', 'TEXT'),
+                ('developer', 'TEXT'),
+                ('publisher', 'TEXT'),
+                ('seller_name', 'TEXT'),
+            ]:
+                if col not in cols:
+                    cursor.execute(f"ALTER TABLE games ADD COLUMN {col} {col_type}")
 
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_games_name
@@ -165,20 +177,14 @@ class DatabaseManager:
             """)
             
             # Add price statistics columns if they don't exist (migration)
-            try:
+            cursor.execute("PRAGMA table_info(statistics_cache)")
+            sc_cols = {row[1] for row in cursor.fetchall()}
+            if 'total_value_cents' not in sc_cols:
                 cursor.execute("ALTER TABLE statistics_cache ADD COLUMN total_value_cents INTEGER")
-            except sqlite3.OperationalError:
-                pass
-            
-            try:
+            if 'avg_price_cents' not in sc_cols:
                 cursor.execute("ALTER TABLE statistics_cache ADD COLUMN avg_price_cents REAL")
-            except sqlite3.OperationalError:
-                pass
-            
-            try:
+            if 'current_year_value_cents' not in sc_cols:
                 cursor.execute("ALTER TABLE statistics_cache ADD COLUMN current_year_value_cents INTEGER")
-            except sqlite3.OperationalError:
-                pass
 
             print(f"Database initialized at {self.db_path}")
 
@@ -200,133 +206,108 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
+            # Single query: fetch all existing games with their current prices
+            cursor.execute(
+                "SELECT id, epic_id, platform, original_price_cents FROM games"
+            )
+            existing = {(row['epic_id'], row['platform']): (row['id'], row['original_price_cents'])
+                        for row in cursor.fetchall()}
+
+            inserts = []
             for game_data in games_data:
                 epic_id = game_data['epic_id']
                 platform = game_data.get('platform', 'PC')
+                key = (epic_id, platform)
+                existing_info = existing.get(key)
 
-                # Try to find existing game
-                cursor.execute("""
-                    SELECT id FROM games
-                    WHERE epic_id = ? AND platform = ?
-                """, (epic_id, platform))
+                if existing_info is not None:
+                    game_id, existing_price = existing_info
+                    game_id_map[key] = game_id
 
-                result = cursor.fetchone()
-
-                if result:
-                    # Update existing game
-                    game_id = result['id']
-                    
-                    # Check if price is already set
-                    cursor.execute("SELECT original_price_cents FROM games WHERE id = ?", (game_id,))
-                    existing_price_row = cursor.fetchone()
-                    existing_price = existing_price_row['original_price_cents'] if existing_price_row else None
-                    
-                    # Only update price if it's not already set (preserve first captured price)
-                    if (game_data.get('original_price_cents') is not None and 
-                        game_data.get('original_price_cents') > 0 and 
-                        existing_price is None):
-                        # Price not set, update it
+                    # Preserve first captured price
+                    price = game_data.get('original_price_cents')
+                    set_price = (
+                        price is not None and price > 0 and existing_price is None
+                    )
+                    if set_price:
                         cursor.execute("""
                             UPDATE games
-                            SET name = ?,
-                                link = ?,
+                            SET name = ?, link = ?,
                                 epic_rating = COALESCE(?, epic_rating),
                                 image_filename = COALESCE(?, image_filename),
-                                original_price_cents = ?,
-                                currency_code = ?,
+                                original_price_cents = ?, currency_code = ?,
                                 sandbox_id = COALESCE(?, sandbox_id),
                                 mapping_slug = COALESCE(?, mapping_slug),
                                 product_slug = COALESCE(?, product_slug),
                                 url_slug = COALESCE(?, url_slug),
+                                description = COALESCE(?, description),
+                                developer = COALESCE(?, developer),
+                                publisher = COALESCE(?, publisher),
+                                seller_name = COALESCE(?, seller_name),
+                                last_checked = CURRENT_TIMESTAMP,
                                 updated_at = CURRENT_TIMESTAMP
                             WHERE id = ?
                         """, (game_data['name'], game_data['link'],
-                             game_data.get('epic_rating'), game_data.get('image_filename'),
-                             game_data.get('original_price_cents'), game_data.get('currency_code'),
-                             game_data.get('sandbox_id'), game_data.get('mapping_slug'),
-                             game_data.get('product_slug'), game_data.get('url_slug'),
-                             game_id))
+                              game_data.get('epic_rating'), game_data.get('image_filename'),
+                              price, game_data.get('currency_code'),
+                              game_data.get('sandbox_id'), game_data.get('mapping_slug'),
+                              game_data.get('product_slug'), game_data.get('url_slug'),
+                              game_data.get('description'), game_data.get('developer'),
+                              game_data.get('publisher'), game_data.get('seller_name'),
+                              game_id))
                     else:
-                        # Price already set, don't update it
                         cursor.execute("""
                             UPDATE games
-                            SET name = ?,
-                                link = ?,
+                            SET name = ?, link = ?,
                                 epic_rating = COALESCE(?, epic_rating),
                                 image_filename = COALESCE(?, image_filename),
                                 sandbox_id = COALESCE(?, sandbox_id),
                                 mapping_slug = COALESCE(?, mapping_slug),
                                 product_slug = COALESCE(?, product_slug),
                                 url_slug = COALESCE(?, url_slug),
+                                description = COALESCE(?, description),
+                                developer = COALESCE(?, developer),
+                                publisher = COALESCE(?, publisher),
+                                seller_name = COALESCE(?, seller_name),
+                                last_checked = CURRENT_TIMESTAMP,
                                 updated_at = CURRENT_TIMESTAMP
                             WHERE id = ?
                         """, (game_data['name'], game_data['link'],
-                             game_data.get('epic_rating'), game_data.get('image_filename'),
-                             game_data.get('sandbox_id'), game_data.get('mapping_slug'),
-                             game_data.get('product_slug'), game_data.get('url_slug'),
-                             game_id))
+                              game_data.get('epic_rating'), game_data.get('image_filename'),
+                              game_data.get('sandbox_id'), game_data.get('mapping_slug'),
+                              game_data.get('product_slug'), game_data.get('url_slug'),
+                              game_data.get('description'), game_data.get('developer'),
+                              game_data.get('publisher'), game_data.get('seller_name'),
+                              game_id))
                 else:
-                    # Insert new game
-                    cursor.execute("""
-                        INSERT INTO games (epic_id, platform, name, link, epic_rating,
-                                         image_filename, original_price_cents, currency_code,
-                                         sandbox_id, mapping_slug, product_slug, url_slug)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (epic_id, platform, game_data['name'], game_data['link'],
-                         game_data.get('epic_rating'), game_data.get('image_filename'),
-                         game_data.get('original_price_cents'), game_data.get('currency_code'),
-                         game_data.get('sandbox_id'), game_data.get('mapping_slug'),
-                         game_data.get('product_slug'), game_data.get('url_slug')))
-                    game_id = cursor.lastrowid
+                    inserts.append((
+                        epic_id, platform, game_data['name'], game_data['link'],
+                        game_data.get('epic_rating'), game_data.get('image_filename'),
+                        game_data.get('original_price_cents'), game_data.get('currency_code'),
+                        game_data.get('sandbox_id'), game_data.get('mapping_slug'),
+                        game_data.get('product_slug'), game_data.get('url_slug'),
+                        game_data.get('description'), game_data.get('developer'),
+                        game_data.get('publisher'), game_data.get('seller_name'),
+                    ))
 
-                game_id_map[(epic_id, platform)] = game_id
+            if inserts:
+                cursor.executemany("""
+                    INSERT INTO games (epic_id, platform, name, link, epic_rating,
+                                     image_filename, original_price_cents, currency_code,
+                                     sandbox_id, mapping_slug, product_slug, url_slug,
+                                     description, developer, publisher, seller_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, inserts)
+                # Map IDs for newly inserted rows
+                cursor.execute(
+                    "SELECT id, epic_id, platform FROM games"
+                )
+                for row in cursor.fetchall():
+                    key = (row['epic_id'], row['platform'])
+                    if key not in game_id_map:
+                        game_id_map[key] = row['id']
 
         return game_id_map
-
-    def insert_or_update_game(self, epic_id, name, link, platform='PC', epic_rating=None,
-                             image_filename=None, sandbox_id=None, mapping_slug=None,
-                             product_slug=None, url_slug=None):
-        """Insert new game or update existing, returns game_id"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-
-            # Try to find existing game
-            cursor.execute("""
-                SELECT id FROM games
-                WHERE epic_id = ? AND platform = ?
-            """, (epic_id, platform))
-
-            result = cursor.fetchone()
-
-            if result:
-                # Update existing game
-                game_id = result['id']
-                cursor.execute("""
-                    UPDATE games
-                    SET name = ?,
-                        link = ?,
-                        epic_rating = COALESCE(?, epic_rating),
-                        image_filename = COALESCE(?, image_filename),
-                        sandbox_id = COALESCE(?, sandbox_id),
-                        mapping_slug = COALESCE(?, mapping_slug),
-                        product_slug = COALESCE(?, product_slug),
-                        url_slug = COALESCE(?, url_slug),
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                """, (name, link, epic_rating, image_filename, sandbox_id,
-                     mapping_slug, product_slug, url_slug, game_id))
-            else:
-                # Insert new game
-                cursor.execute("""
-                    INSERT INTO games (epic_id, platform, name, link, epic_rating,
-                                     image_filename, sandbox_id, mapping_slug,
-                                     product_slug, url_slug)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (epic_id, platform, name, link, epic_rating, image_filename,
-                     sandbox_id, mapping_slug, product_slug, url_slug))
-                game_id = cursor.lastrowid
-
-            return game_id
 
     def batch_insert_promotions(self, promotions_data):
         """
@@ -359,26 +340,6 @@ class DatabaseManager:
                      promo_data['status'], promo_data.get('platform', 'PC'),
                      int(promo_data.get('notified', False))))
 
-    def insert_promotion(self, game_id, start_date, end_date, status, platform='PC', notified=False):
-        """Insert new promotion record, avoids duplicates"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-
-            # Check if this exact promotion already exists
-            cursor.execute("""
-                SELECT id FROM promotions
-                WHERE game_id = ? AND start_date = ? AND end_date = ?
-            """, (game_id, start_date, end_date))
-
-            if cursor.fetchone():
-                # Promotion already exists, skip
-                return
-
-            cursor.execute("""
-                INSERT INTO promotions (game_id, start_date, end_date, status, platform, notified)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (game_id, start_date, end_date, status, platform, int(notified)))
-
     def update_promotion_status(self):
         """Update status of all promotions based on current time"""
         with self.get_connection() as conn:
@@ -408,21 +369,23 @@ class DatabaseManager:
 
             if platform:
                 cursor.execute("""
-                    SELECT g.*, p.start_date, p.end_date, p.status
+                    SELECT g.*, MAX(p.start_date) as start_date, MAX(p.end_date) as end_date,
+                           p.status
                     FROM games g
                     JOIN promotions p ON g.id = p.game_id
                     WHERE p.status = 'current' AND g.platform = ?
                     GROUP BY g.id
-                    ORDER BY p.start_date DESC
+                    ORDER BY MAX(p.start_date) DESC
                 """, (platform,))
             else:
                 cursor.execute("""
-                    SELECT g.*, p.start_date, p.end_date, p.status
+                    SELECT g.*, MAX(p.start_date) as start_date, MAX(p.end_date) as end_date,
+                           p.status
                     FROM games g
                     JOIN promotions p ON g.id = p.game_id
                     WHERE p.status = 'current'
                     GROUP BY g.id
-                    ORDER BY g.platform, p.start_date DESC
+                    ORDER BY g.platform, MAX(p.start_date) DESC
                 """)
 
             return [dict(row) for row in cursor.fetchall()]
@@ -434,21 +397,23 @@ class DatabaseManager:
 
             if platform:
                 cursor.execute("""
-                    SELECT g.*, p.start_date, p.end_date, p.status
+                    SELECT g.*, MIN(p.start_date) as start_date, MIN(p.end_date) as end_date,
+                           p.status
                     FROM games g
                     JOIN promotions p ON g.id = p.game_id
                     WHERE p.status = 'upcoming' AND g.platform = ?
                     GROUP BY g.id
-                    ORDER BY p.start_date ASC
+                    ORDER BY MIN(p.start_date) ASC
                 """, (platform,))
             else:
                 cursor.execute("""
-                    SELECT g.*, p.start_date, p.end_date, p.status
+                    SELECT g.*, MIN(p.start_date) as start_date, MIN(p.end_date) as end_date,
+                           p.status
                     FROM games g
                     JOIN promotions p ON g.id = p.game_id
                     WHERE p.status = 'upcoming'
                     GROUP BY g.id
-                    ORDER BY p.start_date ASC
+                    ORDER BY MIN(p.start_date) ASC
                 """)
 
             return [dict(row) for row in cursor.fetchall()]
@@ -527,12 +492,13 @@ class DatabaseManager:
 
             # Calculate average games per week
             if first_game_date:
+                now_utc = datetime.now(timezone.utc).isoformat()
                 cursor.execute("""
                     SELECT
                         COUNT(*) as total_promos,
-                        JULIANDAY('now') - JULIANDAY(?) as days_elapsed
+                        JULIANDAY(?) - JULIANDAY(?) as days_elapsed
                     FROM promotions
-                """, (first_game_date,))
+                """, (now_utc, first_game_date))
                 result = cursor.fetchone()
                 if result['days_elapsed'] > 0:
                     avg_per_week = (result['total_promos'] / result['days_elapsed']) * 7
@@ -633,3 +599,14 @@ class DatabaseManager:
                 """)
 
             return {row['year']: row['count'] for row in cursor.fetchall()}
+
+    def get_stale_games(self, days: int = 30) -> list[dict]:
+        """Find games not seen by the scraper in the given number of days (possibly delisted)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM games
+                WHERE datetime(last_checked) < datetime('now', ?)
+                ORDER BY last_checked ASC
+            """, (f'-{int(days)} days',))
+            return [dict(row) for row in cursor.fetchall()]

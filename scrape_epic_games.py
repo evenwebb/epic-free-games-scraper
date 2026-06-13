@@ -1,383 +1,36 @@
+"""Epic Games Store free games scraper — main orchestrator."""
+
 import json
 import os
-import re
 import sys
 import time
-import requests
-import socket
-import ipaddress
-import hashlib
 from datetime import datetime, timezone
-from db_manager import DatabaseManager
-from PIL import Image
-from io import BytesIO
-from urllib.parse import urlparse
-from functools import lru_cache
-from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import requests
 
 import epic_config
 
-# Configuration Constants
-class Config:
-    """Configuration constants for security and performance"""
-    # Security
-    MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB max image size
-    MAX_IMAGE_DIMENSION = 10000  # Max width/height in pixels
-    ALLOWED_URL_SCHEMES = ['https']
-
-    # Network
-    IMAGE_DOWNLOAD_TIMEOUT = 10
-    API_REQUEST_TIMEOUT = 30
-    DOWNLOAD_CHUNK_SIZE = 8192
-    MAX_DOWNLOAD_WORKERS = 10  # Parallel download workers
-
-    # Image Processing
-    IMAGE_QUALITY = 85
-    IMAGE_OPTIMIZE = True
-
-    # Paths
-    OUTPUT_DIR = 'output'
-    IMAGES_DIR = 'output/images'
-    API_HASH_FILE = 'output/.api_hash'  # Store API response hash for early exit
-    SCRAPE_SUMMARY_FILE = 'output/scrape_run_summary.json'
-
-    # Blocked IP ranges (prevent SSRF)
-    BLOCKED_IP_RANGES = [
-        ipaddress.ip_network('10.0.0.0/8'),        # Private
-        ipaddress.ip_network('172.16.0.0/12'),     # Private
-        ipaddress.ip_network('192.168.0.0/16'),    # Private
-        ipaddress.ip_network('127.0.0.0/8'),       # Loopback
-        ipaddress.ip_network('169.254.0.0/16'),    # Link-local (AWS metadata)
-        ipaddress.ip_network('::1/128'),           # IPv6 loopback
-        ipaddress.ip_network('fc00::/7'),          # IPv6 private
-        ipaddress.ip_network('fe80::/10'),         # IPv6 link-local
-    ]
-
-def sanitize_filename(filename):
-    """
-    Sanitize filename to prevent path traversal attacks.
-
-    Security: Removes path separators, null bytes, and control characters.
-    """
-    if not filename:
-        return 'unknown'
-
-    # Remove path separators, null bytes, and control characters
-    filename = re.sub(r'[/\\:\0\x00-\x1f]', '_', str(filename))
-
-    # Remove leading dots and whitespace (prevent hidden files)
-    filename = filename.lstrip('. ')
-
-    # Limit length to prevent filesystem issues
-    filename = filename[:200]
-
-    # Ensure not empty after sanitization
-    if not filename or filename == '_':
-        filename = 'unknown'
-
-    return filename
-
-def validate_url(url):
-    """
-    Validate URL to prevent SSRF attacks.
-
-    Security: Blocks private IPs, localhost, and non-HTTPS schemes.
-    Returns: True if URL is safe, False otherwise
-    """
-    if not url:
-        return False
-
-    try:
-        parsed = urlparse(url)
-
-        # Check scheme (only HTTPS allowed)
-        if parsed.scheme not in Config.ALLOWED_URL_SCHEMES:
-            print(f"⚠️  Blocked URL with invalid scheme: {parsed.scheme}")
-            return False
-
-        # Check hostname exists
-        if not parsed.hostname:
-            print(f"⚠️  Blocked URL without hostname")
-            return False
-
-        # Resolve hostname to all IPs (IPv4 + IPv6); every address must be non-private
-        try:
-            infos = socket.getaddrinfo(
-                parsed.hostname, None, type=socket.SOCK_STREAM
-            )
-        except socket.gaierror as e:
-            print(f"⚠️  Failed to resolve hostname {parsed.hostname}: {e}")
-            return False
-
-        if not infos:
-            print(f"⚠️  No addresses returned for hostname {parsed.hostname}")
-            return False
-
-        seen = set()
-        for info in infos:
-            ip_str = info[4][0]
-            if ip_str in seen:
-                continue
-            seen.add(ip_str)
-            try:
-                ip_obj = ipaddress.ip_address(ip_str)
-            except ValueError:
-                print(f"⚠️  Invalid IP from DNS: {ip_str!r}")
-                return False
-            for blocked_range in Config.BLOCKED_IP_RANGES:
-                if ip_obj in blocked_range:
-                    print(
-                        f"⚠️  Blocked access to private/internal IP: {ip_str} ({parsed.hostname})"
-                    )
-                    return False
-
-        return True
-
-    except Exception as e:
-        print(f"⚠️  URL validation error: {e}")
-        return False
-
-def get_game_link(game):
-    """Construct the store link for a game."""
-    loc = epic_config.STORE_PATH_LOCALE
-    product_slug = game.get('productSlug')
-
-    # Try productSlug first (most reliable)
-    if product_slug:
-        return f"https://store.epicgames.com/{loc}/p/{product_slug}"
-
-    # Then try pageSlug from catalogNs (human-readable and works consistently)
-    mappings = game.get('catalogNs', {}).get('mappings', [])
-    if mappings:
-        page_slug = mappings[0].get('pageSlug')
-        if page_slug:
-            return f"https://store.epicgames.com/{loc}/p/{page_slug}"
-
-    # Fallback to urlSlug (may be a UUID that doesn't work)
-    url_slug = game.get('urlSlug')
-    if url_slug:
-        return f"https://store.epicgames.com/{loc}/p/{url_slug}"
-
-    return None
-
-def get_game_image_url(game):
-    """Get the best image URL for a game."""
-    key_images = game.get('keyImages', [])
-
-    # Prefer OfferImageWide, then OfferImageTall, Thumbnail, then featuredMedia (Epic sometimes uses this)
-    for image_type in ['OfferImageWide', 'OfferImageTall', 'Thumbnail', 'featuredMedia']:
-        for image in key_images:
-            if image.get('type') == image_type:
-                return image.get('url')
-
-    # If none of the preferred types found, return first image
-    if key_images:
-        return key_images[0].get('url')
-
-    return None
-
-def get_game_price(game):
-    """Extract original price and currency from game API data."""
-    price_data = game.get('price', {})
-    total_price = price_data.get('totalPrice', {}) if price_data else {}
-    original_price_cents = total_price.get('originalPrice')  # in cents, None if not available
-    currency_code = total_price.get('currencyCode', 'USD')
-    return original_price_cents, currency_code
-
-
-def epic_free_discount_percentage(offer):
-    """
-    Epic marks a fully free promotion with discountPercentage == 0.
-    Returns None if the field is missing or malformed.
-    """
-    if not isinstance(offer, dict):
-        return None
-    ds = offer.get('discountSetting')
-    if not isinstance(ds, dict):
-        return None
-    pct = ds.get('discountPercentage')
-    if pct is None:
-        return None
-    try:
-        return int(pct)
-    except (TypeError, ValueError):
-        return None
-
-
-def parse_offer_iso_dates(offer, game_title='?'):
-    """Return (start, end) as timezone-aware datetimes, or (None, None) if invalid."""
-    if not isinstance(offer, dict):
-        return None, None
-    start_raw = offer.get('startDate')
-    end_raw = offer.get('endDate')
-    if not start_raw or not end_raw:
-        return None, None
-    try:
-        start = datetime.fromisoformat(str(start_raw).replace('Z', '+00:00'))
-        end = datetime.fromisoformat(str(end_raw).replace('Z', '+00:00'))
-        return start, end
-    except (ValueError, TypeError) as e:
-        print(f"⚠️  Skipping offer with bad dates for {game_title!r}: {e}")
-        return None, None
-
-
-@lru_cache(maxsize=128)
-def format_date(iso_date):
-    """Format ISO date to human-readable format. Cached for performance."""
-    try:
-        dt = datetime.fromisoformat(iso_date.replace('Z', '+00:00'))
-        return dt.strftime('%b %d at %I:%M %p')
-    except (ValueError, AttributeError, TypeError) as e:
-        print(f"⚠️  Date formatting failed for '{iso_date}': {e}")
-        return str(iso_date)
-
-def is_valid_cached_image(file_path):
-    """
-    Check if a cached image file exists and is valid.
-
-    Returns: True if valid cached image exists, False otherwise
-    """
-    if not os.path.exists(file_path):
-        return False
-
-    try:
-        # Check file size (empty or too small = invalid)
-        file_size = os.path.getsize(file_path)
-        if file_size < 1024:  # Less than 1KB
-            return False
-
-        # Try to open and validate the image
-        with Image.open(file_path) as img:
-            # Verify format
-            if img.format not in ['JPEG', 'JPG']:
-                return False
-            # Verify dimensions are reasonable
-            if img.width < 50 or img.height < 50:
-                return False
-            # Image is valid
-            return True
-
-    except (OSError, IOError, Image.UnidentifiedImageError):
-        # Image is corrupted or invalid
-        return False
-
-def download_and_convert_image(image_url, output_path, session=None):
-    """
-    Download an image and convert it to JPG format with optimization.
-
-    Security: Validates URL, enforces size limits, checks dimensions.
-    Performance: Streams download, caches if exists, uses session for connection pooling.
-    """
-    # Performance: Check if valid cached image exists
-    if is_valid_cached_image(output_path):
-        return True  # Skip download
-
-    # Security: Validate URL to prevent SSRF
-    if not validate_url(image_url):
-        raise ValueError(f"Invalid or unsafe URL: {image_url}")
-
-    # Use provided session or create a new requests call
-    http_client = session if session else requests
-
-    try:
-        # Stream download; validate final URL after redirects (SSRF via Location chain)
-        with http_client.get(
-            image_url,
-            timeout=Config.IMAGE_DOWNLOAD_TIMEOUT,
-            stream=True,
-            allow_redirects=True,
-        ) as img_response:
-            img_response.raise_for_status()
-            final_url = img_response.url
-            if not validate_url(final_url):
-                raise ValueError(f"Redirect led to unsafe URL: {final_url}")
-
-            # Check Content-Length header if available
-            content_length = img_response.headers.get('Content-Length')
-            if content_length and int(content_length) > Config.MAX_IMAGE_SIZE:
-                raise ValueError(
-                    f"Image too large: {content_length} bytes (max {Config.MAX_IMAGE_SIZE})"
-                )
-
-            # Download with size limit
-            content = BytesIO()
-            downloaded_bytes = 0
-
-            for chunk in img_response.iter_content(chunk_size=Config.DOWNLOAD_CHUNK_SIZE):
-                if chunk:
-                    downloaded_bytes += len(chunk)
-                    if downloaded_bytes > Config.MAX_IMAGE_SIZE:
-                        raise ValueError(
-                            f"Download exceeded {Config.MAX_IMAGE_SIZE} bytes"
-                        )
-                    content.write(chunk)
-
-            content.seek(0)
-
-            # Open and validate image
-            img = Image.open(content)
-
-            # Security: Validate dimensions to prevent decompression bombs
-            if (
-                img.width > Config.MAX_IMAGE_DIMENSION
-                or img.height > Config.MAX_IMAGE_DIMENSION
-            ):
-                raise ValueError(
-                    f"Image dimensions too large: {img.width}x{img.height} "
-                    f"(max {Config.MAX_IMAGE_DIMENSION})"
-                )
-
-            # Convert to RGB if needed (handles PNG transparency, RGBA, etc.)
-            if img.mode in ('RGBA', 'LA', 'P'):
-                # Create white background
-                background = Image.new('RGB', img.size, (255, 255, 255))
-                if img.mode == 'P':
-                    img = img.convert('RGBA')
-                # Paste image on white background using alpha channel as mask
-                if img.mode == 'RGBA':
-                    background.paste(img, mask=img.split()[-1])
-                else:
-                    background.paste(img)
-                img = background
-            elif img.mode != 'RGB':
-                img = img.convert('RGB')
-
-            # Save as JPEG with optimization
-            img.save(
-                output_path,
-                'JPEG',
-                quality=Config.IMAGE_QUALITY,
-                optimize=Config.IMAGE_OPTIMIZE,
-            )
-        return True
-
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"Failed to download image from {image_url}: {e}") from e
-    except (OSError, IOError) as e:
-        raise RuntimeError(f"Failed to process/save image to {output_path}: {e}") from e
-
-def compute_api_hash(response_data):
-    """Compute SHA256 hash of API response for change detection."""
-    return hashlib.sha256(json.dumps(response_data, sort_keys=True).encode()).hexdigest()
-
-def load_previous_api_hash():
-    """Load the previous API response hash from file."""
-    try:
-        if os.path.exists(Config.API_HASH_FILE):
-            with open(Config.API_HASH_FILE, 'r') as f:
-                return f.read().strip()
-    except Exception:
-        pass
-    return None
-
-def save_api_hash(hash_value):
-    """Save the current API response hash to file."""
-    try:
-        os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
-        with open(Config.API_HASH_FILE, 'w') as f:
-            f.write(hash_value)
-    except Exception as e:
-        print(f"⚠️  Failed to save API hash: {e}")
+from db_manager import DatabaseManager
+from epic_client import (
+    Config,
+    compute_api_hash,
+    epic_free_discount_percentage,
+    extract_game_metadata,
+    format_date,
+    get_game_image_url,
+    get_game_link,
+    get_game_price,
+    load_previous_api_hash,
+    parse_offer_iso_dates,
+    sanitize_filename,
+    save_api_hash,
+)
+from image_processor import (
+    apply_successful_image_updates_to_db,
+    clear_orphaned_game_image_filenames,
+    is_valid_cached_image,
+    run_parallel_image_downloads,
+)
 
 
 def write_scrape_run_summary(payload):
@@ -389,7 +42,7 @@ def write_scrape_run_summary(payload):
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(payload, f, indent=2, default=str)
     except OSError as e:
-        print(f"⚠️  Failed to write scrape summary: {e}")
+        print(f"Failed to write scrape summary: {e}")
 
     summary_file = os.environ.get('GITHUB_STEP_SUMMARY')
     if not summary_file:
@@ -424,49 +77,11 @@ def write_scrape_run_summary(payload):
         with open(summary_file, 'a', encoding='utf-8') as f:
             f.write('\n'.join(lines) + '\n')
     except OSError as e:
-        print(f"⚠️  Failed to append step summary: {e}")
-
-
-def download_image_task(image_url, image_path, game_title, session, retries=2):
-    """Task wrapper for parallel image downloading with retry logic."""
-    last_error = None
-    for attempt in range(retries + 1):
-        try:
-            download_and_convert_image(image_url, image_path, session=session)
-            # Verify the file was created
-            if os.path.exists(image_path) and os.path.getsize(image_path) > 0:
-                return {'success': True, 'game': game_title, 'path': image_path}
-            else:
-                last_error = f"File was not created: {image_path}"
-        except Exception as e:
-            last_error = str(e)
-            if attempt < retries:
-                continue  # Retry
-        break  # Exit loop if successful or out of retries
-    
-    return {'success': False, 'game': game_title, 'error': last_error, 'path': image_path}
-
-def _download_task_display_name(task: dict) -> str:
-    """Human-readable name for an image download task."""
-    name = (
-        task.get('game')
-        or task.get('new_name')
-        or task.get('old_name')
-        or task.get('epic_id')
-    )
-    if name:
-        return str(name)
-    path = task.get('path')
-    return os.path.basename(path) if path else 'unknown'
+        print(f"Failed to append step summary: {e}")
 
 
 def collect_upcoming_promo_image_filenames(games):
-    """
-    Basenames (e.g. epic_id.jpg) used by upcoming free promotions.
-
-    Used for legacy cleanup of old next-game*.jpg files so behavior matches
-    the main catalog loop without duplicating state while iterating.
-    """
+    """Basenames used by upcoming free promotions for legacy cleanup."""
     filenames = set()
     for game in games:
         if not game.get('promotions'):
@@ -485,9 +100,7 @@ def collect_upcoming_promo_image_filenames(games):
                 _, end = parse_offer_iso_dates(offer, game_title)
                 if end is None:
                     continue
-                upcoming_game_id = sanitize_filename(
-                    game.get('id', game_link.split('/')[-1])
-                )
+                upcoming_game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
                 image_filename = f"{upcoming_game_id}.jpg"
                 if image_filename:
                     filenames.add(image_filename)
@@ -495,10 +108,7 @@ def collect_upcoming_promo_image_filenames(games):
 
 
 def collect_retry_and_mystery_download_tasks(all_games, games):
-    """
-    Image downloads for (1) PC games in DB that lack a valid cached image but
-    appear in the current API payload, and (2) mystery games that need art refresh.
-    """
+    """Find games needing image downloads: missing images and mystery game reveals."""
     print("Checking for existing games missing images...")
     existing_games_missing_images = {}
     for g in all_games:
@@ -511,10 +121,8 @@ def collect_retry_and_mystery_download_tasks(all_games, games):
             if not is_valid_cached_image(img_path):
                 existing_games_missing_images[g['epic_id']] = g
 
-    mystery_games_to_update = []
-    for g in all_games:
-        if g.get('platform') == 'PC' and 'mystery' in g['name'].lower():
-            mystery_games_to_update.append(g)
+    mystery_games_to_update = [g for g in all_games
+                               if g.get('platform') == 'PC' and 'mystery' in g['name'].lower()]
 
     api_games_by_id = {game.get('id'): game for game in games if game.get('id')}
     retry_download_tasks = []
@@ -529,10 +137,8 @@ def collect_retry_and_mystery_download_tasks(all_games, games):
                 image_path = os.path.join(Config.IMAGES_DIR, image_filename)
                 if not is_valid_cached_image(image_path):
                     retry_download_tasks.append({
-                        'url': image_url,
-                        'path': image_path,
-                        'game': db_game['name'],
-                        'type': 'retry'
+                        'url': image_url, 'path': image_path,
+                        'game': db_game['name'], 'type': 'retry',
                     })
 
     for db_game in mystery_games_to_update:
@@ -542,22 +148,20 @@ def collect_retry_and_mystery_download_tasks(all_games, games):
             api_name = api_game.get('title', '')
             db_name = db_game['name']
             is_revealed = (
-                'mystery' not in api_name.lower() and
-                api_name.lower() != db_name.lower()
+                'mystery' not in api_name.lower()
+                and api_name.lower() != db_name.lower()
             )
             image_url = get_game_image_url(api_game)
             if image_url:
                 image_filename = f"{sanitize_filename(epic_id)}.jpg"
                 image_path = os.path.join(Config.IMAGES_DIR, image_filename)
                 mystery_update_tasks.append({
-                    'url': image_url,
-                    'path': image_path,
-                    'epic_id': epic_id,
-                    'old_name': db_name,
+                    'url': image_url, 'path': image_path,
+                    'epic_id': epic_id, 'old_name': db_name,
                     'new_name': api_name if is_revealed else db_name,
                     'update_name': is_revealed,
                     'game': api_name if is_revealed else db_name,
-                    'type': 'mystery_update'
+                    'type': 'mystery_update',
                 })
 
     download_tasks = []
@@ -575,145 +179,40 @@ def collect_retry_and_mystery_download_tasks(all_games, games):
     return download_tasks, mystery_updates
 
 
-def run_parallel_image_downloads(download_tasks, session):
-    """Run download_image_task for each task; return (successful_paths_set, failures_list)."""
-    successful_downloads = set()
-    failed_downloads = []
-    if not download_tasks:
-        return successful_downloads, failed_downloads
-    print(f"Downloading {len(download_tasks)} images in parallel...")
-    with ThreadPoolExecutor(max_workers=Config.MAX_DOWNLOAD_WORKERS) as executor:
-        future_to_task = {
-            executor.submit(
-                download_image_task,
-                task['url'],
-                task['path'],
-                _download_task_display_name(task),
-                session,
-            ): task
-            for task in download_tasks
-        }
-        for future in as_completed(future_to_task):
-            result = future.result()
-            if result['success']:
-                print(f"✓ Downloaded: {result['game']}")
-                successful_downloads.add(result['path'])
-            else:
-                print(f"✗ Failed: {result['game']} - {result['error']}")
-                failed_downloads.append(result)
-    if failed_downloads:
-        print(
-            f"\n"
-            f"⚠️  {len(failed_downloads)} image downloads failed. "
-            f"These will be retried on the next scrape run."
-        )
-    return successful_downloads, failed_downloads
-
-
-def apply_successful_image_updates_to_db(db, successful_downloads, mystery_updates):
-    """Persist image (and optional mystery reveal name) after successful downloads."""
-    if not successful_downloads:
-        return
-    print("Updating existing games with successfully downloaded images...")
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-        updated_count = 0
-        mystery_revealed_count = 0
-        for image_path in successful_downloads:
-            image_filename = os.path.basename(image_path)
-            epic_id = os.path.splitext(image_filename)[0]
-            mystery_info = mystery_updates.get(epic_id)
-            if mystery_info and mystery_info.get('update_name'):
-                cursor.execute("""
-                    UPDATE games
-                    SET name = ?, image_filename = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE epic_id = ? AND platform = 'PC'
-                """, (mystery_info['new_name'], image_filename, epic_id))
-                if cursor.rowcount > 0:
-                    mystery_revealed_count += 1
-                    print(
-                        f"  ✓ Revealed: {mystery_info['old_name']} → {mystery_info['new_name']}"
-                    )
-            else:
-                cursor.execute("""
-                    UPDATE games
-                    SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE epic_id = ? AND platform = 'PC' AND (image_filename IS NULL OR image_filename = '')
-                """, (image_filename, epic_id))
-                if cursor.rowcount > 0:
-                    updated_count += 1
-            if mystery_info and not mystery_info.get('update_name'):
-                cursor.execute("""
-                    UPDATE games
-                    SET image_filename = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE epic_id = ? AND platform = 'PC'
-                """, (image_filename, epic_id))
-        conn.commit()
-        if updated_count > 0:
-            print(f"✓ Updated image_filename for {updated_count} existing games")
-        if mystery_revealed_count > 0:
-            print(f"✓ Revealed and updated {mystery_revealed_count} mystery games")
-
-
-def clear_orphaned_game_image_filenames(db):
-    """Clear DB image_filename when the file is missing or fails validation."""
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, epic_id, name, image_filename FROM games "
-            "WHERE image_filename IS NOT NULL AND image_filename != ''"
-        )
-        for row in cursor.fetchall():
-            img_path = os.path.join(Config.IMAGES_DIR, row['image_filename'])
-            if not is_valid_cached_image(img_path):
-                cursor.execute(
-                    "UPDATE games SET image_filename = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (row['id'],)
-                )
-                if cursor.rowcount > 0:
-                    print(f"  Cleared orphaned image ref: {row['name']}")
-
-
 def cleanup_legacy_next_game_files(kept_basenames):
-    """Remove legacy next-game*.jpg files that are no longer tied to upcoming promos."""
+    """Remove legacy next-game*.jpg files no longer tied to upcoming promos."""
     kept = set(kept_basenames)
     for filename in os.listdir(Config.IMAGES_DIR):
-        if (filename.startswith("next-game") and
-                filename.endswith(".jpg") and
-                filename not in kept):
+        if (filename.startswith("next-game")
+                and filename.endswith(".jpg")
+                and filename not in kept):
             try:
                 filepath = os.path.join(Config.IMAGES_DIR, filename)
                 os.remove(filepath)
                 print(f"Removed unused file: {filename}")
             except OSError as e:
-                print(f"⚠️  Failed to remove {filename}: {e}")
+                print(f"Failed to remove {filename}: {e}")
 
 
 def scrape_epic_free_games():
-    # Initialize database
     db = DatabaseManager()
-
-    # Paths (using Config constants)
     os.makedirs(Config.IMAGES_DIR, exist_ok=True)
 
-    # Performance: Load existing games from database for duplicate checking (O(1) dict lookup)
     all_games = db.get_all_games_chronological()
     existing_games_dict = {game['link']: game for game in all_games}
 
-    new_games = []  # Track new current games
-    current_games = []  # Track all current free games (for counts)
-    next_games = []  # Track upcoming games
+    new_games = []
+    current_games = []
+    next_games = []
 
-    # Performance: Create session for connection pooling
     session = requests.Session()
     run_started = time.monotonic()
 
     try:
-        # Update promotion statuses in database
         db.update_promotion_status()
 
-        # Fetch free games from Epic Games API (UK/GBP for regional pricing)
         api_url = epic_config.FREE_GAMES_PROMOTIONS_URL
+
         print("Fetching free games from Epic Games API...")
         response = session.get(api_url, timeout=Config.API_REQUEST_TIMEOUT)
         response.raise_for_status()
@@ -731,7 +230,7 @@ def scrape_epic_free_games():
         previous_hash = load_previous_api_hash()
 
         if current_hash == previous_hash and previous_hash is not None:
-            print("✓ API response unchanged — skipping full catalog update; running image maintenance")
+            print("API response unchanged — skipping full catalog update; running image maintenance")
             maintenance_tasks, mystery_updates = collect_retry_and_mystery_download_tasks(
                 all_games, games
             )
@@ -744,11 +243,7 @@ def scrape_epic_free_games():
 
             save_api_hash(current_hash)
             db.record_scrape_run(
-                games_found=len(games),
-                new_games=0,
-                current=0,
-                upcoming=0,
-                success=True
+                games_found=len(games), new_games=0, current=0, upcoming=0, success=True
             )
             db.update_statistics_cache()
             write_scrape_run_summary({
@@ -758,9 +253,7 @@ def scrape_epic_free_games():
                 'api_hash_sha256': current_hash,
                 'catalog_element_count': len(games),
                 'games_found': len(games),
-                'new_games': 0,
-                'current_free': 0,
-                'upcoming': 0,
+                'new_games': 0, 'current_free': 0, 'upcoming': 0,
                 'image_download_tasks': len(maintenance_tasks),
                 'image_download_failures': [
                     {'game': r['game'], 'error': r.get('error', '')}
@@ -769,32 +262,23 @@ def scrape_epic_free_games():
             })
             return
 
-        print(f"API response changed - processing updates...")
+        print("API response changed - processing updates...")
         now = datetime.now(timezone.utc)
 
-        # Performance: Collect data for batch database operations
         games_to_insert = []
         promotions_to_insert = []
-        download_tasks = []  # Collect image download tasks for parallel execution
+        download_tasks = []
 
-        # Process games
-        # IMPORTANT: Process upcoming games FIRST to capture prices before they become free
-        # When games become free, API returns originalPrice: 0, so we need to capture
-        # prices during the "coming soon" phase when they still have actual values
-        
-        # First pass: Process upcoming games to capture prices
+        # First pass: upcoming games to capture prices before they become free
         for game in games:
             if not game.get('promotions'):
                 continue
-
             game_title = game['title']
             game_link = get_game_link(game)
-
             if not game_link:
                 print(f"Skipping {game_title}: no valid link found")
                 continue
 
-            # Check upcoming promotions FIRST (free later) - capture prices here
             upcoming_offers = game['promotions'].get('upcomingPromotionalOffers', [])
             if upcoming_offers and len(upcoming_offers) > 0:
                 for offer_group in upcoming_offers:
@@ -809,29 +293,20 @@ def scrape_epic_free_games():
                             f"{format_date(offer['startDate'])} - "
                             f"{format_date(offer['endDate'])}"
                         )
-
-                        # Extract price information
-                        # Upcoming games have actual prices (not 0), so capture them here
                         original_price_cents, currency_code = get_game_price(game)
-
-                        # Use epic_id for filename to ensure uniqueness and prevent cache conflicts
                         upcoming_game_id = sanitize_filename(
                             game.get('id', game_link.split('/')[-1])
                         )
                         image_filename = f"{upcoming_game_id}.jpg"
                         image_path = os.path.join(Config.IMAGES_DIR, image_filename)
 
-                        if image_url:
-                            # Add to parallel download queue if not cached
-                            if not is_valid_cached_image(image_path):
-                                download_tasks.append({
-                                    'url': image_url,
-                                    'path': image_path,
-                                    'game': game_title,
-                                    'type': 'upcoming'
-                                })
+                        if image_url and not is_valid_cached_image(image_path):
+                            download_tasks.append({
+                                'url': image_url, 'path': image_path,
+                                'game': game_title, 'type': 'upcoming',
+                            })
 
-                        # Collect game data for batch insert
+                        meta = extract_game_metadata(game)
                         games_to_insert.append({
                             'epic_id': upcoming_game_id,
                             'name': game_title,
@@ -839,38 +314,29 @@ def scrape_epic_free_games():
                             'platform': 'PC',
                             'image_filename': image_filename,
                             'original_price_cents': original_price_cents,
-                            'currency_code': currency_code
+                            'currency_code': currency_code,
+                            **meta,
                         })
-
-                        # Collect promotion data for batch insert (will add game_id later)
                         promotions_to_insert.append({
-                            'epic_id': upcoming_game_id,  # Temporary key for lookup
-                            'platform': 'PC',
+                            'epic_id': upcoming_game_id, 'platform': 'PC',
                             'start_date': offer['startDate'],
                             'end_date': offer['endDate'],
-                            'status': 'upcoming'
+                            'status': 'upcoming',
                         })
-
-                        # Add to next games
                         next_games.append({
-                            'Name': game_title,
-                            'Link': game_link,
-                            'Image': image_path,
-                            'Availability': availability
+                            'Name': game_title, 'Link': game_link,
+                            'Image': image_path, 'Availability': availability,
                         })
 
-        # Second pass: Process currently free games (won't overwrite prices captured above)
+        # Second pass: currently free games
         for game in games:
             if not game.get('promotions'):
                 continue
-
             game_title = game['title']
             game_link = get_game_link(game)
-
             if not game_link:
                 continue
 
-            # Check current promotions (free now)
             promo_offers = game['promotions'].get('promotionalOffers', [])
             if promo_offers and len(promo_offers) > 0:
                 for offer_group in promo_offers:
@@ -878,104 +344,78 @@ def scrape_epic_free_games():
                         start, end = parse_offer_iso_dates(offer, game_title)
                         if start is None:
                             continue
-                        if not (
-                            start <= now <= end
-                            and epic_free_discount_percentage(offer) == 0
-                        ):
+                        if not (start <= now <= end and epic_free_discount_percentage(offer) == 0):
                             continue
                         image_url = get_game_image_url(game)
                         game_id = sanitize_filename(game.get('id', game_link.split('/')[-1]))
                         date_period = f"Free Now - {format_date(offer['endDate'])}"
 
-                        # Extract price information
-                        # NOTE: When game is currently free, API returns originalPrice: 0
-                        # We should NOT overwrite existing prices with 0
-                        # Prices are captured from "upcoming" phase when they have actual values
                         original_price_cents, currency_code = get_game_price(game)
-
-                        # If price is 0, set to None to prevent overwriting existing prices
                         if original_price_cents == 0:
                             original_price_cents = None
                             currency_code = None
 
-                        # Save image (always as JPG) - collect for parallel download
                         image_filename = None
                         image_path = None
                         if image_url:
                             image_filename = f"{game_id}.jpg"
                             image_path = os.path.join(Config.IMAGES_DIR, image_filename)
-                            # Add to parallel download queue if not cached
                             if not is_valid_cached_image(image_path):
                                 download_tasks.append({
-                                    'url': image_url,
-                                    'path': image_path,
-                                    'game': game_title,
-                                    'type': 'current'
+                                    'url': image_url, 'path': image_path,
+                                    'game': game_title, 'type': 'current',
                                 })
 
-                        # Collect game data for batch insert
-                        # When game is currently free, we don't want to overwrite price with None/0
+                        meta = extract_game_metadata(game)
                         games_to_insert.append({
                             'epic_id': game_id,
                             'name': game_title,
                             'link': game_link,
                             'platform': 'PC',
                             'image_filename': image_filename,
-                            'original_price_cents': original_price_cents,  # Will be None if 0
-                            'currency_code': currency_code
+                            'original_price_cents': original_price_cents,
+                            'currency_code': currency_code,
+                            **meta,
                         })
-
-                        # Collect promotion data for batch insert (will add game_id later)
                         promotions_to_insert.append({
-                            'epic_id': game_id,  # Temporary key for lookup
-                            'platform': 'PC',
+                            'epic_id': game_id, 'platform': 'PC',
                             'start_date': offer['startDate'],
                             'end_date': offer['endDate'],
-                            'status': 'current'
+                            'status': 'current',
                         })
 
-                        # Check for duplicates using database (O(1) dict lookup)
                         if game_link not in existing_games_dict:
                             new_games.append(game_title)
 
-                        # Track all current free games (for statistics)
                         current_games.append({
-                            'Name': game_title,
-                            'Link': game_link,
-                            'Image': image_path,
-                            'Availability': date_period
+                            'Name': game_title, 'Link': game_link,
+                            'Image': image_path, 'Availability': date_period,
                         })
 
         existing_next_game_images = collect_upcoming_promo_image_filenames(games)
-        extra_tasks, mystery_updates = collect_retry_and_mystery_download_tasks(
-            all_games, games
-        )
+        extra_tasks, mystery_updates = collect_retry_and_mystery_download_tasks(all_games, games)
         download_tasks.extend(extra_tasks)
         successful_downloads, failed_downloads = run_parallel_image_downloads(
             download_tasks, session
         )
 
-        # Only set image_filename if the image file actually exists
+        # Only set image_filename if the file actually exists
         for game_data in games_to_insert:
             if game_data.get('image_filename'):
                 image_path = os.path.join(Config.IMAGES_DIR, game_data['image_filename'])
-                # Check if file exists (either was cached or successfully downloaded)
                 file_exists = is_valid_cached_image(image_path) or image_path in successful_downloads
                 if not file_exists:
-                    # Image doesn't exist, don't store filename (will be retried on next scrape if game appears in API again)
                     game_data['image_filename'] = None
 
-        # Performance: Batch insert all games and promotions
         print(f"Batch inserting {len(games_to_insert)} games...")
         game_id_map = db.batch_insert_or_update_games(games_to_insert)
 
-        # Map promotion data to game_ids and batch insert
         for promo in promotions_to_insert:
-            epic_id = promo.pop('epic_id')  # Remove temporary key
+            epic_id = promo.pop('epic_id')
             platform = promo['platform']
             promo['game_id'] = game_id_map.get((epic_id, platform))
             if not promo['game_id']:
-                print(f"⚠️  Warning: Could not find game_id for {epic_id}")
+                print(f"Warning: Could not find game_id for {epic_id}")
 
         print(f"Batch inserting {len(promotions_to_insert)} promotions...")
         db.batch_insert_promotions(promotions_to_insert)
@@ -985,20 +425,12 @@ def scrape_epic_free_games():
         cleanup_legacy_next_game_files(existing_next_game_images)
 
         print(f"Data scraped successfully. Found {len(new_games)} new games.")
-
-        # Performance: Save API hash for next run's early exit check
         save_api_hash(current_hash)
 
-        # Record scrape run in database
         db.record_scrape_run(
-            games_found=len(games),
-            new_games=len(new_games),
-            current=len(current_games),
-            upcoming=len(next_games),
-            success=True
+            games_found=len(games), new_games=len(new_games),
+            current=len(current_games), upcoming=len(next_games), success=True,
         )
-
-        # Update statistics cache
         db.update_statistics_cache()
 
         write_scrape_run_summary({
@@ -1022,33 +454,23 @@ def scrape_epic_free_games():
         print(f"An error occurred: {e}")
         import traceback
         traceback.print_exc()
-
-        # Record failed scrape run in database
         try:
             db.record_scrape_run(
-                games_found=0,
-                new_games=0,
-                current=0,
-                upcoming=0,
-                success=False,
-                error=str(e)
+                games_found=0, new_games=0, current=0, upcoming=0,
+                success=False, error=str(e),
             )
         except Exception as db_error:
-            print(f"⚠️  Failed to record error in database: {db_error}")
-            pass  # Don't fail if database recording fails
-
+            print(f"Failed to record error in database: {db_error}")
         write_scrape_run_summary({
             'success': False,
             'duration_seconds': round(time.monotonic() - run_started, 3),
             'error': str(e),
             'image_download_failures': [],
         })
-
         sys.exit(1)
-
     finally:
-        # Performance: Close session to free resources
         session.close()
+
 
 if __name__ == '__main__':
     scrape_epic_free_games()

@@ -12,9 +12,14 @@ function initializeSearch(data) {
     const searchInput = document.getElementById('gameSearch');
     const yearFilter = document.getElementById('yearFilter');
     const sortOrder = document.getElementById('sortOrder');
+    const platformFilter = document.getElementById('platformFilter');
 
     if (searchInput) {
         searchInput.addEventListener('input', handleSearchInput);
+    }
+
+    if (platformFilter) {
+        platformFilter.addEventListener('change', applyFilters);
     }
 
     if (yearFilter) {
@@ -39,10 +44,16 @@ function handleSearchInput(e) {
 
 function applyFilters() {
     const searchTerm = document.getElementById('gameSearch').value.toLowerCase().trim();
+    const platform = document.getElementById('platformFilter')?.value || 'all';
     const year = document.getElementById('yearFilter').value;
     const sort = document.getElementById('sortOrder').value;
 
     let filtered = [...allGames];
+
+    // Apply platform filter
+    if (platform && platform !== 'all') {
+        filtered = filtered.filter(game => game.platform === platform);
+    }
 
     // Apply search filter
     if (searchTerm) {
@@ -67,7 +78,7 @@ function applyFilters() {
     updateDisplay(filtered);
 
     // Update URL without reload
-    updateURL(searchTerm, year, sort);
+    updateURL(searchTerm, year, sort, platform);
 }
 
 function sortGames(games, sortOrder) {
@@ -110,10 +121,11 @@ function updateDisplay(games) {
     console.log(`Showing ${games.length} of ${allGames.length} games`);
 }
 
-function updateURL(search, year, sort) {
+function updateURL(search, year, sort, platform) {
     const params = new URLSearchParams();
 
     if (search) params.set('search', search);
+    if (platform && platform !== 'all') params.set('platform', platform);
     if (year && year !== 'all') params.set('year', year);
     if (sort && sort !== 'newest') params.set('sort', sort);
 
@@ -128,12 +140,16 @@ function applyURLFilters() {
     const params = new URLSearchParams(window.location.search);
 
     const search = params.get('search');
+    const platform = params.get('platform');
     const year = params.get('year');
     const sort = params.get('sort');
 
-    // Apply values to form elements
     if (search) {
         document.getElementById('gameSearch').value = search;
+    }
+    if (platform) {
+        const pf = document.getElementById('platformFilter');
+        if (pf) pf.value = platform;
     }
     if (year) {
         document.getElementById('yearFilter').value = year;
@@ -142,8 +158,7 @@ function applyURLFilters() {
         document.getElementById('sortOrder').value = sort;
     }
 
-    // Apply filters if any URL params exist
-    if (search || year || sort) {
+    if (search || platform || year || sort) {
         applyFilters();
     }
 }

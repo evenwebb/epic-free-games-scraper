@@ -7,11 +7,14 @@ Writes api_unchanged=true|false to GITHUB_OUTPUT when set.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
+import socket
 import sys
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
@@ -19,8 +22,51 @@ if _REPO_ROOT not in sys.path:
 
 import epic_config  # noqa: E402
 
+_BLOCKED_IP_RANGES = [
+    ipaddress.ip_network('10.0.0.0/8'),
+    ipaddress.ip_network('172.16.0.0/12'),
+    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network('127.0.0.0/8'),
+    ipaddress.ip_network('169.254.0.0/16'),
+    ipaddress.ip_network('::1/128'),
+    ipaddress.ip_network('fc00::/7'),
+    ipaddress.ip_network('fe80::/10'),
+]
+
+
+def _validate_url(url: str) -> bool:
+    parsed = urlparse(url)
+    if parsed.scheme not in ('https',):
+        return False
+    if not parsed.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, None, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return False
+    if not infos:
+        return False
+    seen = set()
+    for info in infos:
+        ip_str = info[4][0]
+        if ip_str in seen:
+            continue
+        seen.add(ip_str)
+        try:
+            ip_obj = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        for blocked in _BLOCKED_IP_RANGES:
+            if ip_obj in blocked:
+                return False
+    return True
+
 
 def main() -> int:
+    if not _validate_url(epic_config.FREE_GAMES_PROMOTIONS_URL):
+        print("SSRF check failed: API URL resolves to private/internal IP", file=sys.stderr)
+        return 1
+
     hash_file = os.path.join(_REPO_ROOT, "output", ".api_hash")
     req = urllib.request.Request(
         epic_config.FREE_GAMES_PROMOTIONS_URL,

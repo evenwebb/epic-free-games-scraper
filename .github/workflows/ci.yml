@@ -20,15 +20,15 @@ concurrency:
 
 jobs:
   test-and-build-site:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
           cache-dependency-path: requirements.txt
 
@@ -42,4 +42,9 @@ jobs:
         run: python3 generate_website.py
 
       - name: Verify static site outputs
-        run: test -f website/index.html && test -f website/data/games.json
+        run: |
+          test -f website/index.html
+          test -f website/data/games.json
+          test -f website/css/styles.css
+          test -f website/css/timeline.css
+          test -f website/js/app.js

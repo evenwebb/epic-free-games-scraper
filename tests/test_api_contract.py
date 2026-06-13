@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import epic_config
-from scrape_epic_games import (
+from epic_client import (
     compute_api_hash,
     epic_free_discount_percentage,
     get_game_link,
