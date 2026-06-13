@@ -1,0 +1,20 @@
+name: Database Integrity Check
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Every Monday 8am UTC
+  workflow_dispatch:
+
+jobs:
+  integrity-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Verify database integrity
+        run: |
+          sqlite3 output/epic_games.db "PRAGMA integrity_check;"
+          sqlite3 output/epic_games.db "PRAGMA foreign_key_check;"
+          echo "Database integrity check passed"

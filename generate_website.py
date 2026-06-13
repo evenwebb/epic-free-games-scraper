@@ -11,8 +11,9 @@ import shutil
 import sys
 from datetime import datetime, timezone
 from db_manager import DatabaseManager
+from epic_client import resolve_tag_names
 
-_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png')
+_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
 
 
 def _env_truthy(name: str) -> bool:
@@ -131,15 +132,33 @@ def export_data_json(db):
     all_games_ios = db.get_all_games_chronological(platform='iOS')
     all_games_android = db.get_all_games_chronological(platform='Android')
 
+    # Get promotion counts per game for recurring detection
+    promo_counts = {}
+    with db.get_connection() as conn:
+        for row in conn.execute("SELECT game_id, COUNT(*) as cnt FROM promotions GROUP BY game_id"):
+            promo_counts[row['game_id']] = row['cnt']
+
     # Format games for JSON export
     def format_game(game):
-        # Format price if available
         original_price = None
         currency = None
         if game.get('original_price_cents') is not None and game.get('original_price_cents') > 0:
-            original_price = game['original_price_cents'] / 100.0  # Convert cents to dollars
+            original_price = game['original_price_cents'] / 100.0
             currency = game.get('currency_code', 'USD')
-        
+
+        # Compute free duration in hours
+        duration_hours = None
+        if game.get('start_date') and game.get('end_date'):
+            try:
+                from datetime import datetime as dt
+                s = dt.fromisoformat(str(game['start_date']).replace('Z', '+00:00'))
+                e = dt.fromisoformat(str(game['end_date']).replace('Z', '+00:00'))
+                duration_hours = round((e - s).total_seconds() / 3600, 1)
+            except (ValueError, TypeError):
+                pass
+
+        free_count = promo_counts.get(game['id'], 1)
+
         return {
             'id': game['id'],
             'epicId': game['epic_id'],
@@ -154,10 +173,16 @@ def export_data_json(db):
             'sellerName': game.get('seller_name'),
             'offerType': game.get('offer_type'),
             'effectiveDate': game.get('effective_date'),
+            'viewableDate': game.get('viewable_date'),
+            'expiryDate': game.get('expiry_date'),
+            'tagIds': game.get('tag_ids'),
+            'tagNames': resolve_tag_names(game.get('tag_ids')),
             'firstFreeDate': game.get('first_free_date'),
             'lastFreeDate': game.get('last_free_date'),
             'startDate': game.get('start_date'),
             'endDate': game.get('end_date'),
+            'freeDurationHours': duration_hours,
+            'freeCount': free_count,
             'status': game.get('all_statuses', '').split(',')[0] if game.get('all_statuses') else None,
         }
 
@@ -180,9 +205,24 @@ def export_data_json(db):
             currency_code = gc
             break
 
+    # Get seller stats
+    seller_stats = []
+    try:
+        raw_sellers = db.get_seller_stats(20)
+        for s in raw_sellers:
+            if s.get('seller_name'):
+                seller_stats.append({
+                    'name': s['seller_name'],
+                    'gameCount': s['game_count'],
+                    'totalValue': (s.get('total_value_cents') or 0) / 100.0,
+                })
+    except Exception:
+        pass
+
     # Create main data export with all platforms
     data_export = {
         'lastUpdated': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        'sellerStats': seller_stats,
         'statistics': {
             'totalGames': platform_counts.get('PC', 0),
             'totalGamesIOS': platform_counts.get('iOS', 0),
@@ -270,6 +310,9 @@ def generate_html(data):
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Epic Games Free Games History">
     <meta name="twitter:description" content="Complete archive of {stats['totalGames']}+ free games from Epic Games Store.">
+    <link rel="manifest" href="/epic-free-games-scraper/manifest.json">
+    <link rel="alternate" type="application/rss+xml" title="Epic Games Free Games RSS" href="/epic-free-games-scraper/feed.xml">
+    <link rel="alternate" type="application/atom+xml" title="Epic Games Free Games Atom" href="/epic-free-games-scraper/feed.xml">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/timeline.css">
 </head>
@@ -289,6 +332,7 @@ def generate_html(data):
             <h1>Epic Games Free Games History</h1>
             <p class="subtitle">Complete archive of free PC games since 2018</p>
             <p class="last-updated">Last updated: {datetime.now(timezone.utc).strftime('%B %d, %Y at %H:%M UTC')}</p>
+            <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark/light mode" title="Toggle theme">&#9788;</button>
         </div>
     </header>
 
@@ -341,6 +385,14 @@ def generate_html(data):
                     <option value="PC">PC</option>
                     <option value="iOS">iOS</option>
                     <option value="Android">Android</option>
+                </select>
+                <select id="offerTypeFilter" class="filter-select">
+                    <option value="all">All Types</option>
+                    <option value="BASE_GAME">Full Games</option>
+                    <option value="ADD_ON">Add-ons</option>
+                    <option value="DLC">DLC</option>
+                    <option value="EDITION">Editions</option>
+                    <option value="BUNDLE">Bundles</option>
                 </select>
                 <select id="yearFilter" class="filter-select">
                     <option value="all">All Years</option>
@@ -432,8 +484,30 @@ def generate_html(data):
     <script src="js/stats.js"></script>
     <script src="js/search.js"></script>
 
-    <!-- Back to Top functionality -->
+    <!-- Theme toggle, PWA, countdown init -->
     <script>
+        // Dark/light mode toggle
+        (function() {{
+            const saved = localStorage.getItem('theme');
+            if (saved === 'light') document.body.classList.add('light-mode');
+            else if (saved === 'dark') document.body.classList.add('dark-mode');
+            const btn = document.getElementById('themeToggle');
+            if (btn) {{
+                btn.addEventListener('click', () => {{
+                    const isLight = document.body.classList.toggle('light-mode');
+                    document.body.classList.remove('dark-mode');
+                    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+                    btn.innerHTML = isLight ? '&#9790;' : '&#9788;';
+                }});
+            }}
+        }})();
+
+        // PWA service worker
+        if ('serviceWorker' in navigator) {{
+            navigator.serviceWorker.register('/epic-free-games-scraper/sw.js');
+        }}
+
+        // Back to Top
         const backToTopButton = document.getElementById('backToTop');
         window.addEventListener('scroll', () => {{
             if (window.pageYOffset > 300) {{
@@ -497,6 +571,18 @@ def generate_current_games_html(games):
         if seller:
             seller_html = f'<div class="game-seller">{escape(seller)}</div>'
 
+        duration_badge = ''
+        dur = game.get('freeDurationHours')
+        if dur:
+            days = int(dur / 24)
+            label = f'{days} days' if days >= 1 else f'{int(dur)} hours'
+            duration_badge = f'<span class="badge badge-duration">Free for {label}</span>'
+
+        recurring_badge = ''
+        fc = game.get('freeCount', 1)
+        if fc > 1:
+            recurring_badge = f'<span class="badge badge-recurring">Previously free {fc - 1}x</span>'
+
         desc = game.get('description')
         desc_html = f'<p class="game-desc">{escape(desc)}</p>' if desc else ''
 
@@ -510,6 +596,7 @@ def generate_current_games_html(games):
                     {seller_html}
                     {start_date_html}
                     {price_html}
+                    {duration_badge} {recurring_badge}
                     {desc_html}
                     <div class="countdown" data-end="{game.get("endDate", "")}">Time remaining...</div>
                     <a href="{escape(game["link"])}" target="_blank" rel="noopener" class="cta-button">Get It Free</a>
@@ -523,6 +610,183 @@ def generate_year_options(games_by_year):
     """Generate year filter options"""
     years = sorted(games_by_year.keys(), reverse=True)
     return '\n'.join([f'<option value="{year}">{year}</option>' for year in years])
+
+def generate_manifest():
+    """Generate PWA manifest.json."""
+    manifest = {
+        'name': 'Epic Games Free Games Tracker',
+        'short_name': 'Epic Free Games',
+        'description': 'Complete history of free games from Epic Games Store',
+        'start_url': '/epic-free-games-scraper/',
+        'display': 'standalone',
+        'background_color': '#0a0a0a',
+        'theme_color': '#0078f2',
+        'icons': [{'src': 'images/favicon.svg', 'sizes': 'any', 'type': 'image/svg+xml'}],
+    }
+    path = 'website/manifest.json'
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(manifest, f, indent=2)
+    print(f"Generated {path}")
+
+
+def generate_sw():
+    """Generate minimal service worker for offline caching."""
+    sw = """const CACHE = 'epic-free-games-v1';
+const URLS = ['/epic-free-games-scraper/', '/epic-free-games-scraper/css/styles.css',
+    '/epic-free-games-scraper/css/timeline.css', '/epic-free-games-scraper/js/app.js',
+    '/epic-free-games-scraper/js/search.js', '/epic-free-games-scraper/js/timeline.js',
+    '/epic-free-games-scraper/data/games.json'];
+self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(URLS))));
+self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));
+"""
+    with open('website/sw.js', 'w', encoding='utf-8') as f:
+        f.write(sw)
+    print("Generated website/sw.js")
+
+
+def generate_rss(data):
+    """Generate RSS/Atom feed for new free games."""
+    stats = data['statistics']
+    games = data['allGames'][:50]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    items = []
+    for g in games:
+        title = html.escape(g['name'])
+        link = html.escape(g['link'])
+        desc = html.escape(g.get('description') or g['name'])
+        date = g.get('firstFreeDate') or now_iso
+        items.append(f"""    <item>
+      <title>{title}</title>
+      <link>{link}</link>
+      <description>{desc}</description>
+      <pubDate>{date}</pubDate>
+      <guid isPermaLink="false">{g['epicId']}-{date}</guid>
+    </item>""")
+    feed = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Epic Games Free Games</title>
+    <link>https://evenwebb.github.io/epic-free-games-scraper/</link>
+    <description>Complete history of {stats['totalGames']}+ free games from Epic Games Store</description>
+    <atom:link href="https://evenwebb.github.io/epic-free-games-scraper/feed.xml" rel="self" type="application/rss+xml"/>
+    <lastBuildDate>{now_iso}</lastBuildDate>
+{chr(10).join(items)}
+  </channel>
+</rss>"""
+    with open('website/feed.xml', 'w', encoding='utf-8') as f:
+        f.write(feed)
+    print("Generated website/feed.xml")
+
+
+def generate_ics(data):
+    """Generate iCalendar file for upcoming free games."""
+    upcoming = data.get('upcomingGames', [])
+    now_utc = datetime.now(timezone.utc)
+    events = []
+    for g in upcoming:
+        try:
+            start = datetime.fromisoformat(g['startDate'].replace('Z', '+00:00'))
+            end = datetime.fromisoformat(g['endDate'].replace('Z', '+00:00'))
+        except (ValueError, TypeError, KeyError):
+            continue
+        uid = f"{g['epicId']}-{start.strftime('%Y%m%d')}@epic-free-games"
+        events.append(f"""BEGIN:VEVENT
+UID:{uid}
+DTSTART:{start.strftime('%Y%m%dT%H%M%SZ')}
+DTEND:{end.strftime('%Y%m%dT%H%M%SZ')}
+SUMMARY:{g['name']} - FREE on Epic Games
+DESCRIPTION:Claim free at {g['link']}
+CATEGORIES:Games
+END:VEVENT""")
+    ics = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Epic Free Games Tracker//EN
+X-WR-CALNAME:Epic Games Free Games
+X-PUBLISHED-TTL:PT12H
+REFRESH-INTERVAL;VALUE=DURATION:PT12H
+METHOD:PUBLISH
+{chr(10).join(events) if events else ''}
+END:VCALENDAR
+"""
+    with open('website/calendar.ics', 'w', encoding='utf-8') as f:
+        f.write(ics)
+    print(f"Generated website/calendar.ics ({len(upcoming)} upcoming games)")
+
+
+def generate_api_latest(data):
+    """Generate minimal /api/latest.json endpoint for bots/scripts."""
+    current = data.get('currentGames', [])
+    latest = {
+        'updated': data['lastUpdated'],
+        'freeNow': [{'name': g['name'], 'link': g['link'],
+                      'endDate': g.get('endDate'), 'seller': g.get('sellerName'),
+                      'originalPrice': g.get('originalPrice'), 'currency': g.get('currency')}
+                     for g in current],
+        'upcoming': [{'name': g['name'], 'link': g['link'],
+                       'startDate': g.get('startDate'), 'endDate': g.get('endDate'),
+                       'seller': g.get('sellerName')}
+                      for g in data.get('upcomingGames', [])[:5]],
+    }
+    ensure_directory('website/api')
+    with open('website/api/latest.json', 'w', encoding='utf-8') as f:
+        json.dump(latest, f, indent=2, ensure_ascii=False)
+    print(f"Generated website/api/latest.json ({len(current)} current, {len(data.get('upcomingGames', []))} upcoming)")
+
+
+def generate_game_pages(data):
+    """Generate individual game detail pages."""
+    all_games = data['allGames']
+    ensure_directory('website/game')
+    count = 0
+    for g in all_games:
+        slug = g['epicId']
+        name = html.escape(g['name'])
+        seller = html.escape(g.get('sellerName') or 'Unknown')
+        desc = html.escape(g.get('description') or '')
+        link = html.escape(g['link'])
+        img = html.escape(g.get('image') or '')
+        price = g.get('originalPrice')
+        currency = g.get('currency', 'GBP')
+        price_str = format_price(price, currency) if price else 'Unknown'
+        dur = g.get('freeDurationHours')
+        dur_str = f"{int(dur/24)} days" if dur and dur >= 24 else (f"{int(dur)} hours" if dur else 'Unknown')
+        fc = g.get('freeCount', 1)
+        html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{name} - Epic Games Free Games History</title>
+    <meta name="description" content="{desc[:160]}">
+    <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container">
+            <a href="../">&larr; Back to all games</a>
+            <h1>{name}</h1>
+        </div>
+    </header>
+    <main class="container game-detail">
+        <div class="game-detail-layout">
+            {f'<img src="../{img}" alt="{name}" class="game-detail-image">' if img else ''}
+            <div class="game-detail-info">
+                <p><strong>Seller:</strong> {seller}</p>
+                <p><strong>Normal price:</strong> {price_str}</p>
+                <p><strong>Free duration:</strong> {dur_str}</p>
+                {f'<p><strong>Previously free:</strong> {fc - 1} times</p>' if fc > 1 else ''}
+                {f'<p class="game-detail-desc">{desc}</p>' if desc else ''}
+                <a href="{link}" target="_blank" rel="noopener" class="cta-button">View on Epic Games Store</a>
+            </div>
+        </div>
+    </main>
+</body>
+</html>"""
+        with open(f'website/game/{slug}.html', 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        count += 1
+    print(f"Generated {count} game detail pages in website/game/")
+
 
 def generate_website():
     """Main function to generate complete website"""
@@ -540,7 +804,9 @@ def generate_website():
         'website/css',
         'website/js',
         'website/data',
-        'website/images'
+        'website/images',
+        'website/api',
+        'website/game',
     ]
     for directory in directories:
         ensure_directory(directory)
@@ -548,8 +814,14 @@ def generate_website():
     # Export data
     data = export_data_json(db)
 
-    # Generate HTML
+    # Generate all files
     generate_html(data)
+    generate_manifest()
+    generate_sw()
+    generate_rss(data)
+    generate_ics(data)
+    generate_api_latest(data)
+    generate_game_pages(data)
 
     # Copy images
     copy_images(db)

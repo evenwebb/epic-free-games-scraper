@@ -12,6 +12,47 @@ from urllib.parse import urlparse
 
 import epic_config
 
+# Common Epic Games Store tag ID -> genre name mapping
+# Sourced from the Epic catalog API; extended as new tags appear
+_TAG_NAMES = {
+    '1395': 'Action',
+    '1370': 'Action-Adventure',
+    '1367': 'RPG',
+    '1368': 'Strategy',
+    '1373': 'Simulation',
+    '1375': 'Sports',
+    '1374': 'Racing',
+    '1366': 'Puzzle',
+    '1372': 'Platformer',
+    '1380': 'Horror',
+    '1381': 'Stealth',
+    '1386': 'Fighting',
+    '1388': 'Card Game',
+    '1399': 'Visual Novel',
+    '9547': 'Indie',
+    '1117': 'Single Player',
+    '1263': 'Multiplayer',
+    '1264': 'Co-op',
+    '1291': 'Online',
+    '1151': 'Open World',
+    '1376': 'Survival',
+    '1382': 'Shooter',
+    '1384': 'First Person',
+    '1385': 'Third Person',
+    '9989': 'Adventure',
+    '9549': 'Casual',
+    '9551': 'Roguelike',
+}
+
+
+def resolve_tag_names(tag_ids_csv):
+    """Resolve comma-separated tag IDs to human-readable genre names."""
+    if not tag_ids_csv:
+        return None
+    ids = tag_ids_csv.split(',')
+    names = [_TAG_NAMES.get(tid.strip(), tid.strip()) for tid in ids]
+    return ','.join(names)
+
 
 class Config:
     """Configuration constants for security and performance."""
@@ -129,6 +170,8 @@ def extract_game_metadata(game):
     mappings = catalog_ns.get('mappings') or []
     mapping_slug = mappings[0].get('pageSlug') if mappings else None
     seller = game.get('seller') or {}
+    tags = game.get('tags') or []
+    tag_ids = [t['id'] for t in tags if isinstance(t, dict) and 'id' in t] if isinstance(tags, list) else []
     return {
         'description': (game.get('description') or '').strip() or None,
         'seller_name': (seller.get('name') or '').strip() or None,
@@ -138,6 +181,9 @@ def extract_game_metadata(game):
         'url_slug': game.get('urlSlug'),
         'offer_type': game.get('offerType'),
         'effective_date': game.get('effectiveDate'),
+        'viewable_date': game.get('viewableDate'),
+        'expiry_date': game.get('expiryDate'),
+        'tag_ids': ','.join(tag_ids) if tag_ids else None,
     }
 
 
@@ -230,3 +276,29 @@ def save_api_hash(hash_value):
             f.write(hash_value)
     except Exception as e:
         print(f"Failed to save API hash: {e}")
+
+
+_ETAG_FILE = os.path.join(Config.OUTPUT_DIR, '.api_etag')
+
+
+def load_etag():
+    """Load stored ETag for If-None-Match requests."""
+    try:
+        if os.path.exists(_ETAG_FILE):
+            with open(_ETAG_FILE, 'r') as f:
+                return f.read().strip() or None
+    except Exception:
+        pass
+    return None
+
+
+def save_etag(etag):
+    """Save ETag from API response for future conditional requests."""
+    if not etag:
+        return
+    try:
+        os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
+        with open(_ETAG_FILE, 'w') as f:
+            f.write(etag)
+    except Exception as e:
+        print(f"Failed to save ETag: {e}")

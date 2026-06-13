@@ -51,6 +51,9 @@ class DatabaseManager:
                     seller_name TEXT,
                     offer_type TEXT,
                     effective_date TIMESTAMP,
+                    viewable_date TIMESTAMP,
+                    expiry_date TIMESTAMP,
+                    tag_ids TEXT,
                     last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -72,6 +75,9 @@ class DatabaseManager:
                 ('seller_name', 'TEXT'),
                 ('offer_type', 'TEXT'),
                 ('effective_date', 'TIMESTAMP'),
+                ('viewable_date', 'TIMESTAMP'),
+                ('expiry_date', 'TIMESTAMP'),
+                ('tag_ids', 'TEXT'),
             ]:
                 if col not in cols:
                     cursor.execute(f"ALTER TABLE games ADD COLUMN {col} {col_type}")
@@ -153,8 +159,19 @@ class DatabaseManager:
             """)
 
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS scrape_history_games (
+                    scrape_id INTEGER NOT NULL,
+                    game_id INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    PRIMARY KEY (scrape_id, game_id, status),
+                    FOREIGN KEY (scrape_id) REFERENCES scrape_history(id) ON DELETE CASCADE,
+                    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+                )
+            """)
+
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_scrape_history_timestamp
-                ON scrape_history(run_timestamp DESC)
+                ON scrape_history(run_timestamp)
             """)
 
             # Statistics cache table - pre-computed statistics
@@ -185,6 +202,20 @@ class DatabaseManager:
                 cursor.execute("ALTER TABLE statistics_cache ADD COLUMN avg_price_cents REAL")
             if 'current_year_value_cents' not in sc_cols:
                 cursor.execute("ALTER TABLE statistics_cache ADD COLUMN current_year_value_cents INTEGER")
+
+            # FTS5 full-text search on game names and descriptions
+            cursor.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS games_fts USING fts5(
+                    name, description, content='games', content_rowid='id'
+                )
+            """)
+            # Populate FTS if empty (existing DB migration)
+            cursor.execute("SELECT COUNT(*) FROM games_fts")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO games_fts(rowid, name, description)
+                    SELECT id, name, COALESCE(description, '') FROM games
+                """)
 
             print(f"Database initialized at {self.db_path}")
 
@@ -244,6 +275,9 @@ class DatabaseManager:
                                 seller_name = COALESCE(?, seller_name),
                                 offer_type = COALESCE(?, offer_type),
                                 effective_date = COALESCE(?, effective_date),
+                                viewable_date = COALESCE(?, viewable_date),
+                                expiry_date = COALESCE(?, expiry_date),
+                                tag_ids = COALESCE(?, tag_ids),
                                 last_checked = CURRENT_TIMESTAMP,
                                 updated_at = CURRENT_TIMESTAMP
                             WHERE id = ?
@@ -254,6 +288,8 @@ class DatabaseManager:
                               game_data.get('product_slug'), game_data.get('url_slug'),
                               game_data.get('description'), game_data.get('seller_name'),
                               game_data.get('offer_type'), game_data.get('effective_date'),
+                              game_data.get('viewable_date'), game_data.get('expiry_date'),
+                              game_data.get('tag_ids'),
                               game_id))
                     else:
                         cursor.execute("""
@@ -269,6 +305,9 @@ class DatabaseManager:
                                 seller_name = COALESCE(?, seller_name),
                                 offer_type = COALESCE(?, offer_type),
                                 effective_date = COALESCE(?, effective_date),
+                                viewable_date = COALESCE(?, viewable_date),
+                                expiry_date = COALESCE(?, expiry_date),
+                                tag_ids = COALESCE(?, tag_ids),
                                 last_checked = CURRENT_TIMESTAMP,
                                 updated_at = CURRENT_TIMESTAMP
                             WHERE id = ?
@@ -278,6 +317,8 @@ class DatabaseManager:
                               game_data.get('product_slug'), game_data.get('url_slug'),
                               game_data.get('description'), game_data.get('seller_name'),
                               game_data.get('offer_type'), game_data.get('effective_date'),
+                              game_data.get('viewable_date'), game_data.get('expiry_date'),
+                              game_data.get('tag_ids'),
                               game_id))
                 else:
                     inserts.append((
@@ -288,6 +329,8 @@ class DatabaseManager:
                         game_data.get('product_slug'), game_data.get('url_slug'),
                         game_data.get('description'), game_data.get('seller_name'),
                         game_data.get('offer_type'), game_data.get('effective_date'),
+                        game_data.get('viewable_date'), game_data.get('expiry_date'),
+                        game_data.get('tag_ids'),
                     ))
 
             if inserts:
@@ -295,8 +338,9 @@ class DatabaseManager:
                     INSERT INTO games (epic_id, platform, name, link, epic_rating,
                                      image_filename, original_price_cents, currency_code,
                                      sandbox_id, mapping_slug, product_slug, url_slug,
-                                     description, seller_name, offer_type, effective_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     description, seller_name, offer_type, effective_date,
+                                     viewable_date, expiry_date, tag_ids)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, inserts)
                 # Map IDs for newly inserted rows
                 cursor.execute(
@@ -306,6 +350,17 @@ class DatabaseManager:
                     key = (row['epic_id'], row['platform'])
                     if key not in game_id_map:
                         game_id_map[key] = row['id']
+
+            # Update FTS index for new/updated games
+            for game_data in games_data:
+                epic_id = game_data['epic_id']
+                platform = game_data.get('platform', 'PC')
+                gid = game_id_map.get((epic_id, platform))
+                if gid:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO games_fts(rowid, name, description)
+                        VALUES (?, ?, ?)
+                    """, (gid, game_data['name'], game_data.get('description') or ''))
 
         return game_id_map
 
@@ -610,3 +665,41 @@ class DatabaseManager:
                 ORDER BY last_checked ASC
             """, (f'-{int(days)} days',))
             return [dict(row) for row in cursor.fetchall()]
+
+    def search_games(self, query: str, limit: int = 50) -> list[dict]:
+        """FTS5 full-text search across game names and descriptions."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT g.* FROM games g
+                JOIN games_fts fts ON g.id = fts.rowid
+                WHERE games_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (query, limit))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_seller_stats(self, limit: int = 20) -> list[dict]:
+        """Get top publishers/sellers by number of free games given away."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT seller_name, COUNT(*) as game_count,
+                       SUM(original_price_cents) as total_value_cents
+                FROM games
+                WHERE seller_name IS NOT NULL AND platform = 'PC'
+                GROUP BY seller_name
+                ORDER BY game_count DESC
+                LIMIT ?
+            """, (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def record_scrape_history_games(self, scrape_id: int, game_statuses: list[tuple[int, str]]) -> None:
+        """Link a scrape run to the games found (game_id, status)."""
+        if not game_statuses:
+            return
+        with self.get_connection() as conn:
+            conn.executemany(
+                "INSERT OR IGNORE INTO scrape_history_games (scrape_id, game_id, status) VALUES (?, ?, ?)",
+                [(scrape_id, gid, status) for gid, status in game_statuses],
+            )

@@ -21,10 +21,12 @@ from epic_client import (
     get_game_image_url,
     get_game_link,
     get_game_price,
+    load_etag,
     load_previous_api_hash,
     parse_offer_iso_dates,
     sanitize_filename,
     save_api_hash,
+    save_etag,
 )
 from image_processor import (
     apply_successful_image_updates_to_db,
@@ -215,8 +217,40 @@ def scrape_epic_free_games():
         api_url = epic_config.FREE_GAMES_PROMOTIONS_URL
 
         print("Fetching free games from Epic Games API...")
-        response = session.get(api_url, timeout=Config.API_REQUEST_TIMEOUT)
+        headers = {}
+        etag = load_etag()
+        if etag:
+            headers['If-None-Match'] = etag
+        response = session.get(api_url, timeout=Config.API_REQUEST_TIMEOUT, headers=headers)
+
+        if response.status_code == 304:
+            print("API returned 304 Not Modified (ETag match) — nothing changed")
+            save_etag(etag)
+            maintenance_tasks, mystery_updates = collect_retry_and_mystery_download_tasks(
+                all_games, []
+            )
+            successful_downloads, failed_downloads = run_parallel_image_downloads(
+                maintenance_tasks, session
+            )
+            apply_successful_image_updates_to_db(db, successful_downloads, mystery_updates)
+            clear_orphaned_game_image_filenames(db)
+            db.record_scrape_run(games_found=0, new_games=0, current=0, upcoming=0, success=True)
+            db.update_statistics_cache()
+            write_scrape_run_summary({
+                'success': True, 'early_exit_etag': True,
+                'duration_seconds': round(time.monotonic() - run_started, 3),
+                'image_download_tasks': len(maintenance_tasks),
+                'image_download_failures': [
+                    {'game': r['game'], 'error': r.get('error', '')}
+                    for r in failed_downloads
+                ],
+            })
+            return
+
         response.raise_for_status()
+        new_etag = response.headers.get('ETag')
+        if new_etag:
+            save_etag(new_etag)
 
         api_data = response.json()
 
@@ -426,6 +460,7 @@ def scrape_epic_free_games():
         cleanup_legacy_next_game_files(existing_next_game_images)
 
         print(f"Data scraped successfully. Found {len(new_games)} new games.")
+        send_discord_notification(len(games), new_games, current_games, next_games)
         save_api_hash(current_hash)
 
         db.record_scrape_run(
@@ -470,6 +505,34 @@ def scrape_epic_free_games():
         sys.exit(1)
     finally:
         session.close()
+
+
+def send_discord_notification(games_checked, new_games, current_games, upcoming_games):
+    """Send a Discord webhook notification with scrape results (if configured)."""
+    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL', '').strip()
+    if not webhook_url:
+        return
+    if not new_games and not current_games:
+        return
+    try:
+        import requests as req
+        fields = []
+        if new_games:
+            fields.append({'name': 'New Games', 'value': '\n'.join('• ' + n for n in new_games[:10]), 'inline': False})
+        if current_games:
+            fields.append({'name': 'Currently Free', 'value': '\n'.join('• ' + g['Name'] for g in current_games[:5]), 'inline': True})
+        if upcoming_games:
+            fields.append({'name': 'Coming Soon', 'value': '\n'.join('• ' + g['Name'] for g in upcoming_games[:5]), 'inline': True})
+        embed = {
+            'title': f'Epic Games Free Games Update',
+            'description': f'Checked {games_checked} games, found {len(new_games)} new',
+            'color': 0x0078f2,
+            'fields': fields,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+        }
+        req.post(webhook_url, json={'embeds': [embed]}, timeout=10)
+    except Exception as e:
+        print(f"Discord webhook failed: {e}")
 
 
 if __name__ == '__main__':

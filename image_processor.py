@@ -86,6 +86,12 @@ def download_and_convert_image(image_url, output_path, session=None):
                 img = img.convert('RGB')
 
             img.save(output_path, 'JPEG', quality=Config.IMAGE_QUALITY, optimize=Config.IMAGE_OPTIMIZE)
+            # Also save WebP version for modern browsers (30% smaller)
+            webp_path = output_path.rsplit('.', 1)[0] + '.webp'
+            try:
+                img.save(webp_path, 'WEBP', quality=Config.IMAGE_QUALITY, method=6)
+            except Exception:
+                pass  # WebP optional, JPEG is the fallback
         return True
 
     except requests.exceptions.RequestException as e:

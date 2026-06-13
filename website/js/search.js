@@ -13,6 +13,7 @@ function initializeSearch(data) {
     const yearFilter = document.getElementById('yearFilter');
     const sortOrder = document.getElementById('sortOrder');
     const platformFilter = document.getElementById('platformFilter');
+    const offerTypeFilter = document.getElementById('offerTypeFilter');
 
     if (searchInput) {
         searchInput.addEventListener('input', handleSearchInput);
@@ -20,6 +21,10 @@ function initializeSearch(data) {
 
     if (platformFilter) {
         platformFilter.addEventListener('change', applyFilters);
+    }
+
+    if (offerTypeFilter) {
+        offerTypeFilter.addEventListener('change', applyFilters);
     }
 
     if (yearFilter) {
@@ -45,6 +50,7 @@ function handleSearchInput(e) {
 function applyFilters() {
     const searchTerm = document.getElementById('gameSearch').value.toLowerCase().trim();
     const platform = document.getElementById('platformFilter')?.value || 'all';
+    const offerType = document.getElementById('offerTypeFilter')?.value || 'all';
     const year = document.getElementById('yearFilter').value;
     const sort = document.getElementById('sortOrder').value;
 
@@ -53,6 +59,11 @@ function applyFilters() {
     // Apply platform filter
     if (platform && platform !== 'all') {
         filtered = filtered.filter(game => game.platform === platform);
+    }
+
+    // Apply offer type filter
+    if (offerType && offerType !== 'all') {
+        filtered = filtered.filter(game => game.offerType === offerType);
     }
 
     // Apply search filter
