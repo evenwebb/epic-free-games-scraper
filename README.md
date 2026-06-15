@@ -17,17 +17,21 @@ A complete system for tracking Epic Games Store free games since 2018, featuring
 
 ### 🌐 **Beautiful Static Website**
 - Timeline view of all free games by year and month
-- Search by game name
-- Filter by year and sort options
+- Full-text search (SQLite FTS5) with tag filtering
+- Individual game detail pages with metadata and promotion history
+- Dark mode with automatic OS preference detection
+- PWA support (installable, offline-capable)
+- RSS and iCalendar feeds for new game notifications
 - Statistics dashboard with charts
 - Lazy loading for fast performance
 - Countdown timers for current free games
 - Responsive design (mobile-friendly)
 
 ### 🤖 **Automated Scraping**
-- Uses official Epic Games API (no HTML scraping)
+- Uses official Epic Games API (no HTML scraping) — extracts all available fields
+- Modular design: `scraper.py`, `models.py`, `db_manager.py`, `image_utils.py`, `epic_config.py`
 - Runs automatically daily at 4pm UK time via GitHub Actions
-- Downloads high-quality game images
+- Downloads high-quality game images with ETag caching
 - Updates database and website automatically
 - Skips heavy work when the API payload is unchanged (hash check)
 
@@ -187,9 +191,26 @@ stats = db.get_statistics()
 - Links to Epic Store pages
 
 ### Search & Filters
-- Search by game name
+- Search by game name (powered by SQLite FTS5 full-text search)
 - Filter by year (2018–present)
+- Filter by tags (Action, Adventure, RPG, Strategy, etc.)
 - Sort by: Newest, Oldest, A-Z, Rating
+
+### Detail Pages
+- Individual game pages with full metadata
+- Price history and promotion timeline
+- Publisher, developer, platform, and rating info
+- Related games and tag-based navigation
+
+### RSS & Calendar Feeds
+- RSS feed of recently added free games
+- iCalendar (.ics) feed for promotion start/end dates
+- Subscribe to get notified when new free games are available
+
+### PWA & Mobile
+- Progressive Web App (installable to home screen)
+- Offline support with service worker caching
+- Dark mode with automatic OS preference detection
 
 ### Statistics Dashboard
 - Total games tracked
