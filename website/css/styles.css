@@ -9,28 +9,6 @@
     --color-surface-light: #2a2a2a;
     --color-text: #ffffff;
     --color-text-secondary: #999;
-    --spacing-lg: 2rem;
-    --spacing-md: 1rem;
-    --spacing-sm: 0.5rem;
-}
-
-/* Dark mode is default. Light mode via toggle */
-body.light-mode {
-    --color-background: #f5f5f5;
-    --color-surface: #ffffff;
-    --color-surface-light: #e0e0e0;
-    --color-text: #1a1a1a;
-    --color-text-secondary: #666;
-}
-@media (prefers-color-scheme: light) {
-    body:not(.dark-mode):not(.light-mode) {
-        --color-background: #f5f5f5;
-        --color-surface: #ffffff;
-        --color-surface-light: #e0e0e0;
-        --color-text: #1a1a1a;
-        --color-text-secondary: #666;
-    }
-}
     --color-text-muted: #a0a0a0;
     --color-border: #333333;
     --color-success: #0db060;
@@ -53,6 +31,28 @@ body.light-mode {
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
+}
+
+/* Dark mode is default. Light mode via toggle */
+body.light-mode {
+    --color-background: #f5f5f5;
+    --color-surface: #ffffff;
+    --color-surface-light: #e0e0e0;
+    --color-text: #1a1a1a;
+    --color-text-secondary: #666;
+    --color-text-muted: #777;
+    --color-border: #ccc;
+}
+@media (prefers-color-scheme: light) {
+    body:not(.dark-mode):not(.light-mode) {
+        --color-background: #f5f5f5;
+        --color-surface: #ffffff;
+        --color-surface-light: #e0e0e0;
+        --color-text: #1a1a1a;
+        --color-text-secondary: #666;
+        --color-text-muted: #777;
+        --color-border: #ccc;
+    }
 }
 
 /* Reset and Base Styles */
@@ -78,6 +78,7 @@ body {
 
 /* Header */
 .site-header {
+    position: relative;
     background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-background) 100%);
     padding: var(--spacing-xxl) 0;
     text-align: center;
@@ -283,7 +284,7 @@ body {
 
 .search-controls {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
     gap: var(--spacing-md);
 }
 
@@ -631,6 +632,13 @@ html {
     .github-corner svg {
         width: 60px !important;
         height: 60px !important;
+    }
+}
+
+/* Tablet layout for search controls */
+@media (max-width: 1024px) and (min-width: 769px) {
+    .search-controls {
+        grid-template-columns: 1fr 1fr 1fr;
     }
 }
 

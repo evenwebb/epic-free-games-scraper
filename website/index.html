@@ -34,7 +34,7 @@
         <div class="container">
             <h1>Epic Games Free Games History</h1>
             <p class="subtitle">Complete archive of free PC games since 2018</p>
-            <p class="last-updated">Last updated: June 13, 2026 at 21:26 UTC</p>
+            <p class="last-updated">Last updated: June 16, 2026 at 23:04 UTC</p>
             <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark/light mode" title="Toggle theme">&#9788;</button>
         </div>
     </header>
@@ -51,11 +51,11 @@
                 </div>
                 <div class="hero-card-content">
                     <h3>Warhammer 40K Speed Freeks</h3>
-                    
+                    <div class="game-seller">Wired Productions</div>
                     <div class="game-start-date">Available since: June 11, 2026</div>
                     <div class="game-price">Value: £16</div>
                     <span class="badge badge-duration">Free for 7 days</span> 
-                    
+                    <p class="game-desc">High-octane combat racing in the Warhammer 40,000 universe.</p>
                     <div class="countdown" data-end="2026-06-18T15:00:00.000Z">Time remaining...</div>
                     <a href="https://store.epicgames.com/en-GB/p/warhammer-40k-speed-freeks-12879c" target="_blank" rel="noopener" class="cta-button">Get It Free</a>
                 </div>
@@ -68,11 +68,11 @@
                 </div>
                 <div class="hero-card-content">
                     <h3>The Ouroboros King</h3>
-                    
+                    <div class="game-seller">Plug In Digital SAS</div>
                     <div class="game-start-date">Available since: June 11, 2026</div>
                     <div class="game-price">Value: £8</div>
                     <span class="badge badge-duration">Free for 7 days</span> 
-                    
+                    <p class="game-desc">The Ouroboros King combines the strategic depth of chess with the build variety and replayability of roguelikes. Assemble a formidable army, discover powerful relics, and buy surprising gadgets to defeat the Coven.</p>
                     <div class="countdown" data-end="2026-06-18T15:00:00.000Z">Time remaining...</div>
                     <a href="https://store.epicgames.com/en-GB/p/the-ouroboros-king-e1d547" target="_blank" rel="noopener" class="cta-button">Get It Free</a>
                 </div>
@@ -236,9 +236,13 @@
         // Dark/light mode toggle
         (function() {
             const saved = localStorage.getItem('theme');
-            if (saved === 'light') document.body.classList.add('light-mode');
-            else if (saved === 'dark') document.body.classList.add('dark-mode');
             const btn = document.getElementById('themeToggle');
+            if (saved === 'light') {
+                document.body.classList.add('light-mode');
+                if (btn) btn.innerHTML = '&#9790;';
+            } else if (saved === 'dark') {
+                document.body.classList.add('dark-mode');
+            }
             if (btn) {
                 btn.addEventListener('click', () => {
                     const isLight = document.body.classList.toggle('light-mode');

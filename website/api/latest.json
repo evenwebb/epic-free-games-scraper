@@ -1,11 +1,11 @@
 {
-  "updated": "2026-06-13T21:26:27.842988Z",
+  "updated": "2026-06-16T23:04:28.587670Z",
   "freeNow": [
     {
       "name": "Warhammer 40K Speed Freeks",
       "link": "https://store.epicgames.com/en-GB/p/warhammer-40k-speed-freeks-12879c",
       "endDate": "2026-06-18T15:00:00.000Z",
-      "seller": null,
+      "seller": "Wired Productions",
       "originalPrice": 15.99,
       "currency": "GBP"
     },
@@ -13,7 +13,7 @@
       "name": "The Ouroboros King",
       "link": "https://store.epicgames.com/en-GB/p/the-ouroboros-king-e1d547",
       "endDate": "2026-06-18T15:00:00.000Z",
-      "seller": null,
+      "seller": "Plug In Digital SAS",
       "originalPrice": 7.99,
       "currency": "GBP"
     }
@@ -24,14 +24,14 @@
       "link": "https://store.epicgames.com/en-GB/p/citizen-sleeper-944858",
       "startDate": "2026-06-18T15:00:00.000Z",
       "endDate": "2026-06-25T15:00:00.000Z",
-      "seller": null
+      "seller": "Surprise Attack Pty Ltd DBA Fellow Traveller Games"
     },
     {
       "name": "ROBOBEAT",
       "link": "https://store.epicgames.com/en-GB/p/robobeat-5f084b",
       "startDate": "2026-06-18T15:00:00.000Z",
       "endDate": "2026-06-25T15:00:00.000Z",
-      "seller": null
+      "seller": "Kwalee"
     }
   ]
 }
