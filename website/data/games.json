@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-06-16T23:25:10.871006Z",
+  "lastUpdated": "2026-06-16T23:54:14.055366Z",
   "sellerStats": [
     {
       "name": "Wired Productions",
@@ -26,7 +26,7 @@
     "totalGames": 623,
     "totalPromotions": 688,
     "firstGameDate": "2018-12-14T16:00:00+00:00",
-    "avgGamesPerWeek": 1.7568466409819306,
+    "avgGamesPerWeek": 1.7568318345924692,
     "gamesByYear": {
       "2018": 2,
       "2019": 69,
@@ -302,7 +302,7 @@
       "name": "Rogue Waters",
       "link": "https://store.epicgames.com/en-GB/p/rogue-waters-9764d6",
       "rating": null,
-      "image": null,
+      "image": "images/a6a2d59fa54946dbbf16f14730c2e5f0.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -333,7 +333,7 @@
       "name": "Songs of Conquest",
       "link": "https://store.epicgames.com/en-GB/p/songs-of-conquest",
       "rating": null,
-      "image": null,
+      "image": "images/62b6d302e2bd41039449b1f2f9608748.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -364,7 +364,7 @@
       "name": "LONESTAR",
       "link": "https://store.epicgames.com/en-GB/p/lonestar-83f143",
       "rating": null,
-      "image": null,
+      "image": "images/9621cc6e5d32437ca3dd998de177f6da.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -395,7 +395,7 @@
       "name": "Calico",
       "link": "https://store.epicgames.com/en-GB/p/calico",
       "rating": null,
-      "image": null,
+      "image": "images/7fc5abc8f11c471e837ddd00ce963350.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -426,7 +426,7 @@
       "name": "Down in Bermuda",
       "link": "https://store.epicgames.com/en-GB/p/down-in-bermuda",
       "rating": null,
-      "image": null,
+      "image": "images/cd37ebd7ce804df9b51b84578e631b8a.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -457,7 +457,7 @@
       "name": "Tomb Raider I-III Remastered Starring Lara Croft",
       "link": "https://store.epicgames.com/en-GB/p/tomb-raider-iiii-remastered-538640",
       "rating": null,
-      "image": null,
+      "image": "images/9e2567e57e61458686d53f5aeaf1e2e0.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -488,7 +488,7 @@
       "name": "The Telltale Batman Shadows Edition",
       "link": "https://store.epicgames.com/en-GB/p/the-telltale-batman",
       "rating": null,
-      "image": null,
+      "image": "images/73a4416d5cdb42f682d504fdf48e987b.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -519,7 +519,7 @@
       "name": "Sunderfolk - Standard Edition",
       "link": "https://store.epicgames.com/en-GB/p/sunderfolk-standard-edition-83c05e",
       "rating": null,
-      "image": null,
+      "image": "images/190cb955f17f48dcb8576aa8288c887f.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -888,7 +888,7 @@
     {
       "id": 601,
       "epicId": "d3b29bd0dac74187970db0d79bf4b18e",
-      "name": "World of Warships \u2014 Epic Anniversary Tachibana Pack",
+      "name": "World of Warships — Epic Anniversary Tachibana Pack",
       "link": "https://store.epicgames.com/en-US/p/world-of-warships",
       "rating": null,
       "image": "images/d3b29bd0dac74187970db0d79bf4b18e.jpg",
@@ -2469,7 +2469,7 @@
     {
       "id": 550,
       "epicId": "70d56e56409e4a0384282d9bea1b4e20",
-      "name": "Jorel\u2019s Brother and The Most Important Game of the Galaxy",
+      "name": "Jorel’s Brother and The Most Important Game of the Galaxy",
       "link": "https://store.epicgames.com/en-US/p/jorels-brother-and-the-most-important-game-of-the-galaxy-47435f",
       "rating": 4.32,
       "image": "images/70d56e56409e4a0384282d9bea1b4e20.jpg",
@@ -3926,7 +3926,7 @@
     {
       "id": 503,
       "epicId": "ffb6b42a72d74d7fba7b9720fda5feee",
-      "name": "World of Warships \u2014 Anniversary Party Favor",
+      "name": "World of Warships — Anniversary Party Favor",
       "link": "https://store.epicgames.com/en-US/p/world-of-warships",
       "rating": 4.4,
       "image": "images/ffb6b42a72d74d7fba7b9720fda5feee.jpg",
@@ -4019,7 +4019,7 @@
     {
       "id": 498,
       "epicId": "80480c4dce974e03a009beeffc625b21",
-      "name": "F1\u00ae Manager 2024",
+      "name": "F1® Manager 2024",
       "link": "https://store.epicgames.com/en-US/p/f1-manager-2024-fe51bd",
       "rating": 4.55,
       "image": "images/80480c4dce974e03a009beeffc625b21.jpg",
@@ -4050,7 +4050,7 @@
     {
       "id": 499,
       "epicId": "f4b09c0830d44f08a4a042b697483977",
-      "name": "Apex Legends\u2122: Loba Free Unlock Bundle",
+      "name": "Apex Legends™: Loba Free Unlock Bundle",
       "link": "https://store.epicgames.com/en-US/p/apex-legends-006cde",
       "rating": 4.16,
       "image": "images/f4b09c0830d44f08a4a042b697483977.jpg",
@@ -4081,7 +4081,7 @@
     {
       "id": 497,
       "epicId": "e79119839e374d468236b7acc979ff95",
-      "name": "HUMANKIND\u2122 Standard Edition",
+      "name": "HUMANKIND™ Standard Edition",
       "link": "https://store.epicgames.com/en-US/p/humankind",
       "rating": 4.5,
       "image": "images/e79119839e374d468236b7acc979ff95.jpg",
@@ -4422,7 +4422,7 @@
     {
       "id": 486,
       "epicId": "82093add2c92433abf5e4975c4e259c4",
-      "name": "HOT WHEELS UNLEASHED\u2122",
+      "name": "HOT WHEELS UNLEASHED™",
       "link": "https://store.epicgames.com/en-US/p/hot-wheels-unleashed",
       "rating": 4.51,
       "image": "images/82093add2c92433abf5e4975c4e259c4.jpg",
@@ -4701,7 +4701,7 @@
     {
       "id": 476,
       "epicId": "283939b792814f5e87d8bdd5a8375fac",
-      "name": "LEGO\u00ae Star Wars\u2122: The Skywalker Saga",
+      "name": "LEGO® Star Wars™: The Skywalker Saga",
       "link": "https://store.epicgames.com/en-US/p/lego-star-wars-the-skywalker-saga",
       "rating": 4.75,
       "image": "images/283939b792814f5e87d8bdd5a8375fac.jpg",
@@ -4918,7 +4918,7 @@
     {
       "id": 471,
       "epicId": "b3b5fa8919d0460996a580892993a5cf",
-      "name": "Apex Legends\u2122: Ash Free Unlock Bundle",
+      "name": "Apex Legends™: Ash Free Unlock Bundle",
       "link": "https://store.epicgames.com/en-US/p/apex-legends-006cde",
       "rating": 4.15,
       "image": "images/b3b5fa8919d0460996a580892993a5cf.jpg",
@@ -5414,7 +5414,7 @@
     {
       "id": 455,
       "epicId": "b2df9bd956ad46b4beabff90f69bd3c9",
-      "name": "Fallout\u00ae Classic Collection",
+      "name": "Fallout® Classic Collection",
       "link": "https://store.epicgames.com/en-US/bundles/fallout-classic-collection",
       "rating": 4.69,
       "image": "images/b2df9bd956ad46b4beabff90f69bd3c9.jpg",
@@ -5507,7 +5507,7 @@
     {
       "id": 450,
       "epicId": "8cb6b75dd4f6415ab2458fa4c33c50d3",
-      "name": "World of Warships \u2014 Starter Pack: Albany",
+      "name": "World of Warships — Starter Pack: Albany",
       "link": "https://store.epicgames.com/en-US/p/world-of-warships",
       "rating": 4.41,
       "image": "images/8cb6b75dd4f6415ab2458fa4c33c50d3.jpg",
@@ -5631,7 +5631,7 @@
     {
       "id": 449,
       "epicId": "7bd8795c4dae49b29285c6279589cc72",
-      "name": "Apex Legends\u2122: Conduit Free Unlock Bundle",
+      "name": "Apex Legends™: Conduit Free Unlock Bundle",
       "link": "https://store.epicgames.com/en-US/p/apex-legends-006cde",
       "rating": 4.05,
       "image": "images/7bd8795c4dae49b29285c6279589cc72.jpg",
@@ -5693,7 +5693,7 @@
     {
       "id": 446,
       "epicId": "e7e111c658584357a25ff993fca52a3c",
-      "name": "RAWMEN: Food Fighter Arena \ud83c\udf5c",
+      "name": "RAWMEN: Food Fighter Arena 🍜",
       "link": "https://store.epicgames.com/en-US/p/rawmen-03f74e",
       "rating": 4.49,
       "image": "images/e7e111c658584357a25ff993fca52a3c.jpg",
@@ -6096,7 +6096,7 @@
     {
       "id": 432,
       "epicId": "175e781d820144ce966f1c1942b64b57",
-      "name": "Dragon Age: Inquisition \u2013 Game of the Year Edition",
+      "name": "Dragon Age: Inquisition – Game of the Year Edition",
       "link": "https://store.epicgames.com/en-US/p/dragon-age-inquisition-game-of-the-year-edition-2f0cbd",
       "rating": 4.29,
       "image": "images/175e781d820144ce966f1c1942b64b57.jpg",
@@ -6499,7 +6499,7 @@
     {
       "id": 418,
       "epicId": "e5cfeb2ef72e4cae8a237317fed902ee",
-      "name": "Call of the Wild: The Angler\u2122",
+      "name": "Call of the Wild: The Angler™",
       "link": "https://store.epicgames.com/en-US/p/call-of-the-wild-the-angler",
       "rating": 4.19,
       "image": "images/e5cfeb2ef72e4cae8a237317fed902ee.jpg",
@@ -8545,7 +8545,7 @@
     {
       "id": 353,
       "epicId": "014f265f264f46e6b5d59c738cf24ee4",
-      "name": "The Sims\u2122 4 The Daring Lifestyle Bundle",
+      "name": "The Sims™ 4 The Daring Lifestyle Bundle",
       "link": "https://www.epicgames.com/store/p/the-sims-4",
       "rating": 4.62,
       "image": "images/014f265f264f46e6b5d59c738cf24ee4.jpg",
@@ -10374,7 +10374,7 @@
     {
       "id": 293,
       "epicId": "1578c50f725742fab1863952e01efc52",
-      "name": "The Drone Racing League\u00ae",
+      "name": "The Drone Racing League®",
       "link": "https://store.epicgames.com/en-US/p/the-drone-racing-league-simulator",
       "rating": 4.51,
       "image": "images/1578c50f725742fab1863952e01efc52.jpg",
@@ -12296,7 +12296,7 @@
     {
       "id": 232,
       "epicId": "b6cc19713fdf44b398c0988a9fc111aa",
-      "name": "Second Extinction\u2122",
+      "name": "Second Extinction™",
       "link": "https://store.epicgames.com/en-US/p/second-extinction",
       "rating": 4.07,
       "image": "images/b6cc19713fdf44b398c0988a9fc111aa.jpg",
@@ -12575,7 +12575,7 @@
     {
       "id": 222,
       "epicId": "e21e1a89e87f4d5faa776258c369ceea",
-      "name": "theHunter: Call of the Wild\u2122",
+      "name": "theHunter: Call of the Wild™",
       "link": "https://store.epicgames.com/en-US/p/thehunter-call-of-the-wild",
       "rating": 4.57,
       "image": "images/e21e1a89e87f4d5faa776258c369ceea.jpg",
@@ -16171,7 +16171,7 @@
     {
       "id": 107,
       "epicId": "9cf93671754649668f7a043b6200ff9b",
-      "name": "Sid Meier\u2019s Civilization\u00ae VI Platinum Edition",
+      "name": "Sid Meier’s Civilization® VI Platinum Edition",
       "link": "https://store.epicgames.com/en-US/p/sid-meiers-civilization-vi",
       "rating": 4.69,
       "image": "images/9cf93671754649668f7a043b6200ff9b.jpg",
@@ -18496,7 +18496,7 @@
     {
       "id": 33,
       "epicId": "dedd448c38d947ab90291540f183378b",
-      "name": "Abz\u00fb",
+      "name": "Abzû",
       "link": "https://store.epicgames.com/en-US/p/abzu",
       "rating": 4.62,
       "image": "images/dedd448c38d947ab90291540f183378b.jpg",
