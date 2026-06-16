@@ -12,15 +12,10 @@ function initializeSearch(data) {
     const searchInput = document.getElementById('gameSearch');
     const yearFilter = document.getElementById('yearFilter');
     const sortOrder = document.getElementById('sortOrder');
-    const platformFilter = document.getElementById('platformFilter');
     const offerTypeFilter = document.getElementById('offerTypeFilter');
 
     if (searchInput) {
         searchInput.addEventListener('input', handleSearchInput);
-    }
-
-    if (platformFilter) {
-        platformFilter.addEventListener('change', applyFilters);
     }
 
     if (offerTypeFilter) {
@@ -49,17 +44,11 @@ function handleSearchInput(e) {
 
 function applyFilters() {
     const searchTerm = document.getElementById('gameSearch').value.toLowerCase().trim();
-    const platform = document.getElementById('platformFilter')?.value || 'all';
     const offerType = document.getElementById('offerTypeFilter')?.value || 'all';
     const year = document.getElementById('yearFilter').value;
     const sort = document.getElementById('sortOrder').value;
 
     let filtered = [...allGames];
-
-    // Apply platform filter
-    if (platform && platform !== 'all') {
-        filtered = filtered.filter(game => game.platform === platform);
-    }
 
     // Apply offer type filter
     if (offerType && offerType !== 'all') {
@@ -89,7 +78,7 @@ function applyFilters() {
     updateDisplay(filtered);
 
     // Update URL without reload
-    updateURL(searchTerm, year, sort, platform);
+    updateURL(searchTerm, year, sort);
 }
 
 function sortGames(games, sortOrder) {
@@ -132,11 +121,10 @@ function updateDisplay(games) {
     console.log(`Showing ${games.length} of ${allGames.length} games`);
 }
 
-function updateURL(search, year, sort, platform) {
+function updateURL(search, year, sort) {
     const params = new URLSearchParams();
 
     if (search) params.set('search', search);
-    if (platform && platform !== 'all') params.set('platform', platform);
     if (year && year !== 'all') params.set('year', year);
     if (sort && sort !== 'newest') params.set('sort', sort);
 
@@ -151,16 +139,11 @@ function applyURLFilters() {
     const params = new URLSearchParams(window.location.search);
 
     const search = params.get('search');
-    const platform = params.get('platform');
     const year = params.get('year');
     const sort = params.get('sort');
 
     if (search) {
         document.getElementById('gameSearch').value = search;
-    }
-    if (platform) {
-        const pf = document.getElementById('platformFilter');
-        if (pf) pf.value = platform;
     }
     if (year) {
         document.getElementById('yearFilter').value = year;
@@ -169,7 +152,7 @@ function applyURLFilters() {
         document.getElementById('sortOrder').value = sort;
     }
 
-    if (search || platform || year || sort) {
+    if (search || year || sort) {
         applyFilters();
     }
 }

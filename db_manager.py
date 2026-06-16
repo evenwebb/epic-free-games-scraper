@@ -193,8 +193,6 @@ class DatabaseManager:
                     total_games INTEGER,
                     total_promotions INTEGER,
                     pc_games INTEGER,
-                    ios_games INTEGER,
-                    android_games INTEGER,
                     first_game_date TIMESTAMP,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     avg_games_per_week REAL,
@@ -506,12 +504,6 @@ class DatabaseManager:
             cursor.execute("SELECT COUNT(*) as total FROM games WHERE platform = 'PC'")
             pc_games = cursor.fetchone()['total']
 
-            cursor.execute("SELECT COUNT(*) as total FROM games WHERE platform = 'iOS'")
-            ios_games = cursor.fetchone()['total']
-
-            cursor.execute("SELECT COUNT(*) as total FROM games WHERE platform = 'Android'")
-            android_games = cursor.fetchone()['total']
-
             cursor.execute("SELECT MIN(start_date) as first_date FROM promotions")
             first_game_date = cursor.fetchone()['first_date']
 
@@ -571,15 +563,15 @@ class DatabaseManager:
             # Insert or update statistics
             cursor.execute("""
                 INSERT OR REPLACE INTO statistics_cache
-                (id, total_games, total_promotions, pc_games, ios_games, android_games,
+                (id, total_games, total_promotions, pc_games,
                  first_game_date, avg_games_per_week, most_common_month,
                  total_value_cents, avg_price_cents, current_year_value_cents, last_updated)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (total_games, total_promotions, pc_games, ios_games, android_games,
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (total_games, total_promotions, pc_games,
                  first_game_date, avg_per_week, most_common_month,
                  total_value_cents, avg_price_cents, current_year_value_cents))
 
-            print(f"Statistics updated: {total_games} total games ({pc_games} PC, {ios_games} iOS, {android_games} Android)")
+            print(f"Statistics updated: {total_games} total games ({pc_games} PC)")
 
     def get_statistics(self):
         """Retrieve cached statistics"""
@@ -588,18 +580,6 @@ class DatabaseManager:
             cursor.execute("SELECT * FROM statistics_cache WHERE id = 1")
             result = cursor.fetchone()
             return dict(result) if result else {}
-
-    def get_platform_counts(self):
-        """Get game counts by platform"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT platform, COUNT(*) as count
-                FROM games
-                GROUP BY platform
-                ORDER BY count DESC
-            """)
-            return {row['platform']: row['count'] for row in cursor.fetchall()}
 
     def get_games_by_year(self, platform=None):
         """Get game counts grouped by year"""

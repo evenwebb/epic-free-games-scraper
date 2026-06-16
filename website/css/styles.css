@@ -14,10 +14,7 @@
     --color-success: #0db060;
     --color-warning: #ff9800;
 
-    /* Platform colors */
     --color-pc: #0078f2;
-    --color-ios: #999999;
-    --color-android: #3ddc84;
 
     /* Spacing */
     --spacing-xs: 0.25rem;
@@ -211,20 +208,6 @@ body {
     background: var(--color-primary-dark);
 }
 
-/* Platform Badges - PC only */
-.platform-badge {
-    position: absolute;
-    top: var(--spacing-sm);
-    right: var(--spacing-sm);
-    padding: var(--spacing-xs) var(--spacing-md);
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    background: var(--color-pc);
-}
-
 /* Statistics Section */
 .stats-section {
     padding: var(--spacing-xxl) 0;
@@ -284,7 +267,7 @@ body {
 
 .search-controls {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
     gap: var(--spacing-md);
 }
 

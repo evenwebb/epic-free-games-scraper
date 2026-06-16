@@ -115,8 +115,6 @@ def collect_retry_and_mystery_download_tasks(all_games, games):
     print("Checking for existing games missing images...")
     existing_games_missing_images = {}
     for g in all_games:
-        if g.get('platform') != 'PC':
-            continue
         if not g.get('image_filename'):
             existing_games_missing_images[g['epic_id']] = g
         else:
@@ -125,7 +123,7 @@ def collect_retry_and_mystery_download_tasks(all_games, games):
                 existing_games_missing_images[g['epic_id']] = g
 
     mystery_games_to_update = [g for g in all_games
-                               if g.get('platform') == 'PC' and 'mystery' in g['name'].lower()]
+                               if 'mystery' in g['name'].lower()]
 
     api_games_by_id = {game.get('id'): game for game in games if game.get('id')}
     retry_download_tasks = []

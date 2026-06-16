@@ -122,15 +122,12 @@ def export_data_json(db):
 
     # Get statistics
     stats = db.get_statistics()
-    platform_counts = db.get_platform_counts()
     games_by_year = db.get_games_by_year()
 
-    # Get games for all platforms
-    current_games_pc = db.get_current_games(platform='PC')
-    upcoming_games_pc = db.get_upcoming_games(platform='PC')
-    all_games_pc = db.get_all_games_chronological(platform='PC')
-    all_games_ios = db.get_all_games_chronological(platform='iOS')
-    all_games_android = db.get_all_games_chronological(platform='Android')
+    # Get games
+    current_games_pc = db.get_current_games()
+    upcoming_games_pc = db.get_upcoming_games()
+    all_games_pc = db.get_all_games_chronological()
 
     # Get promotion counts per game for recurring detection
     promo_counts = {}
@@ -164,7 +161,6 @@ def export_data_json(db):
             'epicId': game['epic_id'],
             'name': game['name'],
             'link': game['link'],
-            'platform': game['platform'],
             'rating': game['epic_rating'],
             'image': f"images/{game['image_filename']}" if game['image_filename'] else None,
             'originalPrice': original_price,
@@ -225,14 +221,12 @@ def export_data_json(db):
     except Exception:
         pass
 
-    # Create main data export with all platforms
+    # Create main data export
     data_export = {
         'lastUpdated': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         'sellerStats': seller_stats,
         'statistics': {
-            'totalGames': platform_counts.get('PC', 0),
-            'totalGamesIOS': platform_counts.get('iOS', 0),
-            'totalGamesAndroid': platform_counts.get('Android', 0),
+            'totalGames': stats.get('total_games', 0),
             'totalPromotions': stats.get('total_promotions', 0),
             'firstGameDate': stats.get('first_game_date'),
             'avgGamesPerWeek': stats.get('avg_games_per_week', 0),
@@ -245,13 +239,6 @@ def export_data_json(db):
         'currentGames': [format_game(g) for g in current_games_pc],
         'upcomingGames': [format_game(g) for g in upcoming_games_pc],
         'allGames': [format_game(g) for g in all_games_pc],
-        'allGamesIOS': [format_game(g) for g in all_games_ios],
-        'allGamesAndroid': [format_game(g) for g in all_games_android],
-        'gamesByPlatform': {
-            'PC': [format_game(g) for g in all_games_pc],
-            'iOS': [format_game(g) for g in all_games_ios],
-            'Android': [format_game(g) for g in all_games_android],
-        },
     }
 
     # Save main data file (atomic write: temp file then rename)
@@ -267,7 +254,7 @@ def export_data_json(db):
             os.remove(tmp)
         raise
 
-    print(f"Exported {len(all_games_pc)} PC, {len(all_games_ios)} iOS, {len(all_games_android)} Android games to {data_file}")
+    print(f"Exported {len(all_games_pc)} PC games to {data_file}")
     return data_export
 
 def format_price(amount, currency='GBP'):
@@ -307,7 +294,7 @@ def generate_html(data):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Epic Games Free Games History - Tracking {stats['totalGames']}+ Free Games Since 2018</title>
-    <meta name="description" content="Complete history of free PC, iOS, and Android games given away by Epic Games Store. Track {stats['totalGames']}+ free games given away since 2018.">
+    <meta name="description" content="Complete history of free PC games given away by Epic Games Store. Track {stats['totalGames']}+ free games given away since 2018.">
     <meta property="og:title" content="Epic Games Free Games History">
     <meta property="og:description" content="Complete archive of {stats['totalGames']}+ free games from Epic Games Store since 2018. Browse the full history of every free game.">
     <meta property="og:type" content="website">
@@ -386,12 +373,6 @@ def generate_html(data):
         <div class="container">
             <div class="search-controls">
                 <input type="search" id="gameSearch" placeholder="Search games..." class="search-input">
-                <select id="platformFilter" class="filter-select">
-                    <option value="all">All Platforms</option>
-                    <option value="PC">PC</option>
-                    <option value="iOS">iOS</option>
-                    <option value="Android">Android</option>
-                </select>
                 <select id="offerTypeFilter" class="filter-select">
                     <option value="all">All Types</option>
                     <option value="BASE_GAME">Full Games</option>

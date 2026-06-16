@@ -184,7 +184,6 @@ function createGameCard(game) {
     const card = document.createElement('div');
     card.className = 'game-card animate';
     card.setAttribute('data-game-id', game.id);
-    card.setAttribute('data-platform', game.platform);
 
     // Image
     const imageDiv = document.createElement('div');

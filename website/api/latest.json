@@ -1,20 +1,20 @@
 {
-  "updated": "2026-06-16T23:04:28.587670Z",
+  "updated": "2026-06-16T23:25:10.871006Z",
   "freeNow": [
-    {
-      "name": "Warhammer 40K Speed Freeks",
-      "link": "https://store.epicgames.com/en-GB/p/warhammer-40k-speed-freeks-12879c",
-      "endDate": "2026-06-18T15:00:00.000Z",
-      "seller": "Wired Productions",
-      "originalPrice": 15.99,
-      "currency": "GBP"
-    },
     {
       "name": "The Ouroboros King",
       "link": "https://store.epicgames.com/en-GB/p/the-ouroboros-king-e1d547",
       "endDate": "2026-06-18T15:00:00.000Z",
       "seller": "Plug In Digital SAS",
       "originalPrice": 7.99,
+      "currency": "GBP"
+    },
+    {
+      "name": "Warhammer 40K Speed Freeks",
+      "link": "https://store.epicgames.com/en-GB/p/warhammer-40k-speed-freeks-12879c",
+      "endDate": "2026-06-18T15:00:00.000Z",
+      "seller": "Wired Productions",
+      "originalPrice": 15.99,
       "currency": "GBP"
     }
   ],

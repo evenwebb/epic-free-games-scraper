@@ -1,5 +1,6 @@
 """Image download, validation, conversion, and parallel processing."""
 
+import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
@@ -9,10 +10,33 @@ from PIL import Image
 
 from epic_client import Config, validate_url
 
+# MD5 hashes of known placeholder/generic images that should be rejected
+KNOWN_PLACEHOLDER_MD5S = {
+    # Epic Games Store generic "EGS" blue-gradient placeholder
+    '12e669fb945b4b7dbcacf77f7d131214',
+}
+
+
+def _md5_of_file(file_path):
+    """Compute MD5 hash of a file. Returns None if file cannot be read."""
+    try:
+        with open(file_path, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def _is_placeholder_image(file_path):
+    """Check if a file is a known placeholder image by its MD5 hash."""
+    md5 = _md5_of_file(file_path)
+    return md5 is not None and md5 in KNOWN_PLACEHOLDER_MD5S
+
 
 def is_valid_cached_image(file_path):
     """Check if a cached image file exists and is valid."""
     if not os.path.exists(file_path):
+        return False
+    if _is_placeholder_image(file_path):
         return False
     try:
         file_size = os.path.getsize(file_path)
@@ -86,6 +110,11 @@ def download_and_convert_image(image_url, output_path, session=None):
                 img = img.convert('RGB')
 
             img.save(output_path, 'JPEG', quality=Config.IMAGE_QUALITY, optimize=Config.IMAGE_OPTIMIZE)
+
+            if _is_placeholder_image(output_path):
+                os.remove(output_path)
+                raise ValueError("Downloaded image is a known placeholder — rejecting")
+
             # Also save WebP version for modern browsers (30% smaller)
             webp_path = output_path.rsplit('.', 1)[0] + '.webp'
             try:

@@ -75,16 +75,6 @@ function updateCountdowns() {
     });
 }
 
-// Get platform icon/emoji
-function getPlatformIcon(platform) {
-    const icons = {
-        'PC': '🖥️',
-        'IOS': '📱',
-        'ANDROID': '🤖'
-    };
-    return icons[platform] || '🎮';
-}
-
 // Initialize application
 async function init() {
     console.log('Initializing Epic Games Free Games History...');
