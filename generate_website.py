@@ -830,7 +830,9 @@ def generate_game_pages(data):
         tags_html = ''
         tags = g.get('tagNames')
         if tags:
-            tags_html = ' '.join(f'<span class="badge badge-tag">{html.escape(t)}</span>' for t in tags.split(','))
+            real_tags = [t for t in tags.split(',') if not t.strip().isdigit()]
+            if real_tags:
+                tags_html = ' '.join(f'<span class="badge badge-tag">{html.escape(t)}</span>' for t in real_tags)
         offer_type = g.get('offerType') or ''
         listing_status = g.get('listingStatus') or ''
         code_only = 'Yes' if g.get('isCodeRedemptionOnly') else 'No'
@@ -846,10 +848,6 @@ def generate_game_pages(data):
 
         first_free = fmt_date(first_free_raw) if first_free_raw else ''
         last_free = fmt_date(last_free_raw) if last_free_raw else ''
-        cats = g.get('categories', '')
-        cats_html = ''
-        if cats:
-            cats_html = ' '.join(f'<span class="badge badge-category">{html.escape(c)}</span>' for c in cats.split(','))
 
         # Build full page URL and image URL for SEO
         page_url = f'https://evenwebb.github.io/epic-free-games-scraper/game/{slug}.html'
@@ -952,13 +950,8 @@ def generate_game_pages(data):
                     </div>''')
         stats_html = '\n'.join(stats_cards)
 
-        # Tags and categories combined
-        tags_cats_parts = []
-        if tags_html:
-            tags_cats_parts.append(tags_html)
-        if cats_html:
-            tags_cats_parts.append(cats_html)
-        tags_cats_combined = '\n                    '.join(tags_cats_parts)
+        # Tags section
+        tags_section = f'<div class="detail-tags-section">{tags_html}</div>' if tags_html else ''
 
         # Promotion timeline items
         promo_items = []
@@ -1025,7 +1018,7 @@ def generate_game_pages(data):
                 <div class="detail-stats-grid">
 {stats_html}
                 </div>
-                {f'<div class="detail-tags-section">{tags_cats_combined}</div>' if tags_cats_combined else ''}
+                {tags_section}
                 {f'<p class="detail-desc">{desc}</p>' if desc else ''}
                 <a href="{link}" target="_blank" rel="noopener" class="detail-cta">View on Epic Games Store &#x2197;</a>
             </div>

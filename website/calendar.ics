@@ -21,4 +21,12 @@ SUMMARY:ROBOBEAT - FREE on Epic Games
 DESCRIPTION:Claim free at https://store.epicgames.com/en-GB/p/robobeat-5f084b
 CATEGORIES:Games
 END:VEVENT
+BEGIN:VEVENT
+UID:bbccf66ad70e492d812e031e17f93b9d-20260625@epic-free-games
+DTSTART:20260625T150000Z
+DTEND:20260702T150000Z
+SUMMARY:Voidwrought - FREE on Epic Games
+DESCRIPTION:Claim free at https://store.epicgames.com/en-GB/p/voidwrought-ce8f4b
+CATEGORIES:Games
+END:VEVENT
 END:VCALENDAR

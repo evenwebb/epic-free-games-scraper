@@ -3,9 +3,16 @@
   <channel>
     <title>Epic Games Free Games</title>
     <link>https://evenwebb.github.io/epic-free-games-scraper/</link>
-    <description>Complete history of 623+ free games from Epic Games Store</description>
+    <description>Complete history of 624+ free games from Epic Games Store</description>
     <atom:link href="https://evenwebb.github.io/epic-free-games-scraper/feed.xml" rel="self" type="application/rss+xml"/>
-    <lastBuildDate>2026-06-17T12:32:18.045359+00:00</lastBuildDate>
+    <lastBuildDate>2026-06-17T13:12:38.837292+00:00</lastBuildDate>
+    <item>
+      <title>Voidwrought</title>
+      <link>https://store.epicgames.com/en-GB/p/voidwrought-ce8f4b</link>
+      <description>Voidwrought is a 2D action-platformer set in a hand-drawn world of cosmic horrors. Explore the thawing ruins of the First Civilisation and strike down the gods that dwell there. Grow your powers, uncover ancient Artifacts, and expand your shrine amid the wreckage.</description>
+      <pubDate>2026-06-25T15:00:00.000Z</pubDate>
+      <guid isPermaLink="false">bbccf66ad70e492d812e031e17f93b9d-2026-06-25T15:00:00.000Z</guid>
+    </item>
     <item>
       <title>Citizen Sleeper</title>
       <link>https://store.epicgames.com/en-GB/p/citizen-sleeper-944858</link>
@@ -348,13 +355,6 @@
       <description>The Callisto Protocol</description>
       <pubDate>2025-12-24T16:00:00.000Z</pubDate>
       <guid isPermaLink="false">6579cbb19cd44979a8ba008bb1ac9084-2025-12-24T16:00:00.000Z</guid>
-    </item>
-    <item>
-      <title>Bloodstained: Ritual of the Night</title>
-      <link>https://store.epicgames.com/en-US/p/bloodstained-f3f575</link>
-      <description>Bloodstained: Ritual of the Night</description>
-      <pubDate>2025-12-23T16:00:00.000Z</pubDate>
-      <guid isPermaLink="false">5bd273500337498dbb9e4f55b44f997c-2025-12-23T16:00:00.000Z</guid>
     </item>
   </channel>
 </rss>

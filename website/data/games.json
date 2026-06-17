@@ -1,6 +1,11 @@
 {
-  "lastUpdated": "2026-06-17T12:32:18.023854Z",
+  "lastUpdated": "2026-06-17T13:12:38.814511Z",
   "sellerStats": [
+    {
+      "name": "Kwalee",
+      "gameCount": 2,
+      "totalValue": 32.98
+    },
     {
       "name": "Wired Productions",
       "gameCount": 1,
@@ -15,18 +20,13 @@
       "name": "Plug In Digital SAS",
       "gameCount": 1,
       "totalValue": 7.99
-    },
-    {
-      "name": "Kwalee",
-      "gameCount": 1,
-      "totalValue": 16.99
     }
   ],
   "statistics": {
-    "totalGames": 623,
-    "totalPromotions": 688,
+    "totalGames": 624,
+    "totalPromotions": 689,
     "firstGameDate": "2018-12-14T16:00:00+00:00",
-    "avgGamesPerWeek": 1.756514068600666,
+    "avgGamesPerWeek": 1.7590622547015302,
     "gamesByYear": {
       "2018": 2,
       "2019": 69,
@@ -36,11 +36,11 @@
       "2023": 88,
       "2024": 93,
       "2025": 103,
-      "2026": 44
+      "2026": 45
     },
-    "totalValue": 493.08,
-    "avgPrice": 12.327,
-    "currentYearValue": 493.08,
+    "totalValue": 509.07,
+    "avgPrice": 12.416341463414636,
+    "currentYearValue": 509.07,
     "currency": "GBP"
   },
   "currentGames": [
@@ -169,9 +169,71 @@
       "freeDurationHours": 168.0,
       "freeCount": 1,
       "status": null
+    },
+    {
+      "id": 624,
+      "epicId": "bbccf66ad70e492d812e031e17f93b9d",
+      "name": "Voidwrought",
+      "link": "https://store.epicgames.com/en-GB/p/voidwrought-ce8f4b",
+      "rating": null,
+      "image": "images/bbccf66ad70e492d812e031e17f93b9d.jpg",
+      "originalPrice": 15.99,
+      "discountPrice": 15.99,
+      "currency": "GBP",
+      "description": "Voidwrought is a 2D action-platformer set in a hand-drawn world of cosmic horrors. Explore the thawing ruins of the First Civilisation and strike down the gods that dwell there. Grow your powers, uncover ancient Artifacts, and expand your shrine amid the wreckage.",
+      "sellerName": "Kwalee",
+      "sellerId": "o-suxccu7jpseb6b4tfez6bmh3w3fv43",
+      "offerType": "BASE_GAME",
+      "listingStatus": "ACTIVE",
+      "isCodeRedemptionOnly": false,
+      "isBlockchainUsed": false,
+      "effectiveDate": "2024-10-24T16:00:00.000Z",
+      "viewableDate": "2024-03-22T08:46:48.000Z",
+      "expiryDate": null,
+      "tagIds": "1216,1381,19847,1370,9547,9549,1151",
+      "tagNames": "1216,Stealth,19847,Action-Adventure,Indie,Casual,Open World",
+      "categories": "freegames,games,games/edition,games/edition/base",
+      "firstFreeDate": null,
+      "lastFreeDate": null,
+      "startDate": "2026-06-25T15:00:00.000Z",
+      "endDate": "2026-07-02T15:00:00.000Z",
+      "freeDurationHours": 168.0,
+      "freeCount": 1,
+      "status": null
     }
   ],
   "allGames": [
+    {
+      "id": 624,
+      "epicId": "bbccf66ad70e492d812e031e17f93b9d",
+      "name": "Voidwrought",
+      "link": "https://store.epicgames.com/en-GB/p/voidwrought-ce8f4b",
+      "rating": null,
+      "image": "images/bbccf66ad70e492d812e031e17f93b9d.jpg",
+      "originalPrice": 15.99,
+      "discountPrice": 15.99,
+      "currency": "GBP",
+      "description": "Voidwrought is a 2D action-platformer set in a hand-drawn world of cosmic horrors. Explore the thawing ruins of the First Civilisation and strike down the gods that dwell there. Grow your powers, uncover ancient Artifacts, and expand your shrine amid the wreckage.",
+      "sellerName": "Kwalee",
+      "sellerId": "o-suxccu7jpseb6b4tfez6bmh3w3fv43",
+      "offerType": "BASE_GAME",
+      "listingStatus": "ACTIVE",
+      "isCodeRedemptionOnly": false,
+      "isBlockchainUsed": false,
+      "effectiveDate": "2024-10-24T16:00:00.000Z",
+      "viewableDate": "2024-03-22T08:46:48.000Z",
+      "expiryDate": null,
+      "tagIds": "1216,1381,19847,1370,9547,9549,1151",
+      "tagNames": "1216,Stealth,19847,Action-Adventure,Indie,Casual,Open World",
+      "categories": "freegames,games,games/edition,games/edition/base",
+      "firstFreeDate": "2026-06-25T15:00:00.000Z",
+      "lastFreeDate": "2026-07-02T15:00:00.000Z",
+      "startDate": null,
+      "endDate": null,
+      "freeDurationHours": null,
+      "freeCount": 1,
+      "status": "upcoming"
+    },
     {
       "id": 622,
       "epicId": "ea365d314ecf4224a5f58d2d7430e7aa",
