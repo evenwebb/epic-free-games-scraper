@@ -58,7 +58,7 @@ function createUpcomingGameCard(game) {
     const card = document.createElement('div');
     card.className = 'upcoming-card animate';
 
-    const detailUrl = game.epicId ? `game/${game.epicId}.html` : null;
+    const detailUrl = game.detailSlug ? `game/${game.detailSlug}.html` : null;
 
     // Image section
     const imageDiv = document.createElement('div');

@@ -7,11 +7,21 @@ Creates a complete static site with HTML, CSS, JS, and data files.
 import html
 import json
 import os
+import re
 import shutil
 import sys
 from datetime import datetime, timezone
 from db_manager import DatabaseManager
 from epic_client import resolve_tag_names
+
+
+def slugify(text):
+    """Convert game name to URL-friendly slug."""
+    text = text.lower().strip()
+    text = re.sub(r'[^\w\s-]', '', text)
+    text = re.sub(r'[\s_]+', '-', text)
+    text = re.sub(r'-+', '-', text)
+    return text.strip('-')
 
 _IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
 
@@ -156,9 +166,13 @@ def export_data_json(db):
 
         free_count = promo_counts.get(game['id'], 1)
 
+        epic_id = game['epic_id']
+        detail_slug = f'{slugify(game["name"])}-{epic_id}'
+
         return {
             'id': game['id'],
-            'epicId': game['epic_id'],
+            'epicId': epic_id,
+            'detailSlug': detail_slug,
             'name': game['name'],
             'link': game['link'],
             'rating': game['epic_rating'],
@@ -606,8 +620,8 @@ def generate_current_games_html(games):
     for game in games:
         name = escape(game["name"])
         img_src = escape(game["image"]) if game.get('image') else ''
-        epic_id = game.get('epicId')
-        detail_url = f'game/{escape(epic_id)}.html' if epic_id else None
+        detail_slug = game.get('detailSlug')
+        detail_url = f'game/{escape(detail_slug)}.html' if detail_slug else None
 
         # Image with optional detail page link
         if game.get('image'):
@@ -815,7 +829,7 @@ def generate_game_pages(data):
     ensure_directory('website/game')
     count = 0
     for g in all_games:
-        slug = g['epicId']
+        slug = g['detailSlug']
         name = html.escape(g['name'])
         seller = html.escape(g.get('sellerName') or 'Unknown')
         desc = html.escape(g.get('description') or '')
@@ -923,10 +937,7 @@ def generate_game_pages(data):
         rating_val = g.get('rating')
 
         # Build meta line parts
-        meta_parts = [seller, 'PC']
-        if offer_type:
-            meta_parts.append(offer_type)
-        meta_line = ' <span class="meta-sep">·</span> '.join(html.escape(p) for p in meta_parts)
+        meta_line = f'{html.escape(seller)} <span class="meta-sep">·</span> PC'
 
         # Build stats grid
         stats_cards = []
@@ -1062,7 +1073,7 @@ def generate_sitemap_xml(data):
   </url>"""]
 
     for g in all_games:
-        slug = g['epicId']
+        slug = g['detailSlug']
         game_lastmod = (g.get('lastFreeDate') or g.get('firstFreeDate') or lastmod)[:10]
         urls.append(f"""  <url>
     <loc>https://evenwebb.github.io/epic-free-games-scraper/game/{slug}.html</loc>

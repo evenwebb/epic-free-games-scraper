@@ -185,7 +185,7 @@ function createGameCard(game) {
     card.className = 'game-card animate';
     card.setAttribute('data-game-id', game.id);
 
-    const detailUrl = game.epicId ? `game/${game.epicId}.html` : null;
+    const detailUrl = game.detailSlug ? `game/${game.detailSlug}.html` : null;
 
     // Image
     const imageDiv = document.createElement('div');
