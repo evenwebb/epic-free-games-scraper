@@ -962,16 +962,24 @@ def generate_game_pages(data):
 
         # Promotion timeline items
         promo_items = []
-        if last_free:
-            promo_items.append(f'''                    <div class="promo-item">
-                        <div class="promo-date">{last_free}</div>
-                        <div class="promo-meta">Last free period</div>
+        if first_free and last_free:
+            if first_free == last_free:
+                date_str = first_free
+            else:
+                date_str = f'{first_free} - {last_free}'
+            promo_items.append(f'''                    <div class="promo-item current">
+                        <div class="promo-date">{date_str}</div>
+                        <div class="promo-meta">Free period</div>
                     </div>''')
-        if first_free:
-            cls = 'promo-item current' if first_free == last_free else 'promo-item'
-            promo_items.append(f'''                    <div class="{cls}">
+        elif first_free:
+            promo_items.append(f'''                    <div class="promo-item current">
                         <div class="promo-date">{first_free}</div>
-                        <div class="promo-meta">First free period</div>
+                        <div class="promo-meta">Free period</div>
+                    </div>''')
+        elif last_free:
+            promo_items.append(f'''                    <div class="promo-item current">
+                        <div class="promo-date">{last_free}</div>
+                        <div class="promo-meta">Free period</div>
                     </div>''')
         promo_html = '\n'.join(promo_items) if promo_items else '<p>No promotion history available.</p>'
 
