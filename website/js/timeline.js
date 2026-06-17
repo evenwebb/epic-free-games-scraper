@@ -224,6 +224,14 @@ function createGameCard(game) {
 
     meta.appendChild(date);
 
+    if (game.originalPrice && game.originalPrice > 0) {
+        const price = document.createElement('div');
+        price.className = 'game-card-price';
+        const symbol = game.currency === 'GBP' ? '£' : game.currency === 'USD' ? '$' : '';
+        price.textContent = `Value: ${symbol}${game.originalPrice.toFixed(0)}`;
+        meta.appendChild(price);
+    }
+
     if (game.rating && game.rating > 0) {
         const rating = document.createElement('div');
         rating.className = 'game-card-rating';

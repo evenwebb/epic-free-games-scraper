@@ -124,6 +124,12 @@
     color: var(--color-text-muted);
 }
 
+.game-card-price {
+    font-size: 0.875rem;
+    color: var(--color-success);
+    font-weight: 600;
+}
+
 .game-card-rating {
     font-size: 0.875rem;
     color: var(--color-warning);
