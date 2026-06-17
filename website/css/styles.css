@@ -707,7 +707,8 @@ html {
     cursor: pointer;
     position: absolute;
     top: 1rem;
-    right: 1rem;
+    right: 5.5rem;
+    z-index: 1001;
     transition: background 0.2s;
 }
 .theme-toggle:hover {
