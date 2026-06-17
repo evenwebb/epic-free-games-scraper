@@ -139,6 +139,25 @@
     content: '⭐ ';
 }
 
+.game-card-store-link {
+    font-size: 0.8rem;
+    color: var(--color-primary);
+    text-decoration: none;
+    font-weight: 500;
+    margin-top: var(--spacing-xs);
+    display: inline-block;
+}
+
+.game-card-store-link:hover {
+    text-decoration: underline;
+}
+
+.game-card-image a {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
 
 /* Status Indicators */
 .status-badge {

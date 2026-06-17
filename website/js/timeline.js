@@ -185,6 +185,8 @@ function createGameCard(game) {
     card.className = 'game-card animate';
     card.setAttribute('data-game-id', game.id);
 
+    const detailUrl = game.epicId ? `game/${game.epicId}.html` : null;
+
     // Image
     const imageDiv = document.createElement('div');
     imageDiv.className = 'game-card-image';
@@ -194,7 +196,14 @@ function createGameCard(game) {
         img.src = game.image;
         img.alt = game.name;
         img.loading = 'lazy';
-        imageDiv.appendChild(img);
+        if (detailUrl) {
+            const imgLink = document.createElement('a');
+            imgLink.href = detailUrl;
+            imgLink.appendChild(img);
+            imageDiv.appendChild(imgLink);
+        } else {
+            imageDiv.appendChild(img);
+        }
     } else {
         const placeholder = document.createElement('div');
         placeholder.className = 'placeholder';
@@ -208,12 +217,14 @@ function createGameCard(game) {
 
     const title = document.createElement('h3');
     title.className = 'game-card-title';
-    const link = document.createElement('a');
-    link.href = game.link;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.textContent = game.name;
-    title.appendChild(link);
+    const titleLink = document.createElement('a');
+    titleLink.href = detailUrl || game.link;
+    if (!detailUrl) {
+        titleLink.target = '_blank';
+        titleLink.rel = 'noopener noreferrer';
+    }
+    titleLink.textContent = game.name;
+    title.appendChild(titleLink);
 
     const meta = document.createElement('div');
     meta.className = 'game-card-meta';
@@ -237,6 +248,17 @@ function createGameCard(game) {
         rating.className = 'game-card-rating';
         rating.textContent = `${game.rating.toFixed(2)}/5`;
         meta.appendChild(rating);
+    }
+
+    // Epic Store external link
+    if (detailUrl) {
+        const storeLink = document.createElement('a');
+        storeLink.className = 'game-card-store-link';
+        storeLink.href = game.link;
+        storeLink.target = '_blank';
+        storeLink.rel = 'noopener noreferrer';
+        storeLink.textContent = 'Epic Store ↗';
+        meta.appendChild(storeLink);
     }
 
     body.appendChild(title);

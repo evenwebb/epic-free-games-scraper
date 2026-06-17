@@ -288,6 +288,68 @@ def generate_html(data):
                     <div class="stat-label">{current_year} Value</div>
                 </div>'''
 
+    # Build OG image tags from first current game image
+    og_image_tags = ''
+    if current_games and current_games[0].get('image'):
+        og_img = current_games[0]['image']
+        og_image_tags = f'''
+    <meta property="og:image" content="https://evenwebb.github.io/epic-free-games-scraper/{og_img}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:image" content="https://evenwebb.github.io/epic-free-games-scraper/{og_img}">'''
+
+    # JSON-LD: WebSite with SearchAction (double braces for f-string nesting in html)
+    site_jsonld = '''    <script type="application/ld+json">
+    { "@context": "https://schema.org", "@type": "WebSite", "name": "Epic Games Free Games Tracker", "url": "https://evenwebb.github.io/epic-free-games-scraper/", "description": "Complete archive of ''' + str(stats['totalGames']) + '''+ free games from Epic Games Store since 2018.", "potentialAction": { "@type": "SearchAction", "target": { "@type": "EntryPoint", "urlTemplate": "https://evenwebb.github.io/epic-free-games-scraper/#search={search_term_string}" }, "query-input": "required name=search_term_string" } }
+    </script>'''
+
+    # JSON-LD: ItemList for current free games
+    current_games_jsonld = ''
+    if current_games:
+        items_parts = []
+        for i, g in enumerate(current_games, 1):
+            g_name = g['name'].replace('"', '\\"')
+            g_link = g['link']
+            g_img = g.get('image', '')
+            g_curr = g.get('currency', 'GBP')
+            items_parts.append(f'''        {{
+            "@type": "ListItem",
+            "position": "{i}",
+            "item": {{
+                "@type": "VideoGame",
+                "name": "{g_name}",
+                "url": "{g_link}",
+                "image": "https://evenwebb.github.io/epic-free-games-scraper/{g_img}",
+                "offers": {{
+                    "@type": "Offer",
+                    "price": "0",
+                    "priceCurrency": "{g_curr}"
+                }}
+            }}
+        }}''')
+        current_games_jsonld = f'''    <script type="application/ld+json">
+    {{
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": "Current Free Games on Epic Games Store",
+        "numberOfItems": "{len(current_games)}",
+        "itemListElement": [
+{",".join(items_parts)}
+        ]
+    }}
+    </script>'''
+
+    # Build head extras string (non-f-string to preserve JSON-LD braces)
+    head_extras = (
+        '    <meta name="keywords" content="Epic Games, free games, PC games, free PC games, game tracker, free game history">\n'
+        '    <meta name="robots" content="index, follow">\n'
+        '    <link rel="canonical" href="https://evenwebb.github.io/epic-free-games-scraper/">'
+        + og_image_tags +
+        '\n    <link rel="icon" type="image/svg+xml" href="/epic-free-games-scraper/favicon.svg">\n'
+        + site_jsonld + '\n'
+        + current_games_jsonld
+    )
+
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -300,6 +362,7 @@ def generate_html(data):
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://evenwebb.github.io/epic-free-games-scraper/">
     <meta property="og:site_name" content="Epic Games Free Games Tracker">
+    <meta property="og:locale" content="en_GB">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Epic Games Free Games History">
     <meta name="twitter:description" content="Complete archive of {stats['totalGames']}+ free games from Epic Games Store.">
@@ -308,6 +371,7 @@ def generate_html(data):
     <link rel="alternate" type="application/atom+xml" title="Epic Games Free Games Atom" href="/epic-free-games-scraper/feed.xml">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/timeline.css">
+{head_extras}
 </head>
 <body>
     <!-- GitHub Corner Badge -->
@@ -750,12 +814,146 @@ def generate_game_pages(data):
         offer_type = g.get('offerType') or ''
         listing_status = g.get('listingStatus') or ''
         code_only = 'Yes' if g.get('isCodeRedemptionOnly') else 'No'
-        first_free = g.get('firstFreeDate', '')[:10] if g.get('firstFreeDate') else ''
-        last_free = g.get('lastFreeDate', '')[:10] if g.get('lastFreeDate') else ''
+        first_free_raw = g.get('firstFreeDate', '')[:10] if g.get('firstFreeDate') else ''
+        last_free_raw = g.get('lastFreeDate', '')[:10] if g.get('lastFreeDate') else ''
+
+        def fmt_date(date_str):
+            try:
+                d = datetime.strptime(date_str, '%Y-%m-%d')
+                return d.strftime('%B %d, %Y')
+            except (ValueError, TypeError):
+                return date_str
+
+        first_free = fmt_date(first_free_raw) if first_free_raw else ''
+        last_free = fmt_date(last_free_raw) if last_free_raw else ''
         cats = g.get('categories', '')
         cats_html = ''
         if cats:
             cats_html = ' '.join(f'<span class="badge badge-category">{html.escape(c)}</span>' for c in cats.split(','))
+
+        # Build full page URL and image URL for SEO
+        page_url = f'https://evenwebb.github.io/epic-free-games-scraper/game/{slug}.html'
+        img_url = f'https://evenwebb.github.io/epic-free-games-scraper/{img}' if img else ''
+        desc_clean = desc[:157] + '...' if len(desc) > 160 else desc
+        rating = g.get('rating')
+
+        # OG image tags
+        og_img_tags = ''
+        if img_url:
+            og_img_tags = f'''
+    <meta property="og:image" content="{img_url}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="{name}">
+    <meta name="twitter:image" content="{img_url}">'''
+
+        # JSON-LD VideoGame structured data
+        jsonld_parts = [f'''    <script type="application/ld+json">
+    {{
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "{name.replace(chr(34), chr(92)+chr(34))}",
+        "url": "{link}",
+        "description": "{(g.get('description') or '').replace(chr(34), chr(92)+chr(34))[:500]}",
+        "operatingSystem": "Windows",
+        "applicationCategory": "Game",
+        "offers": {{
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "{currency}"
+        }},
+        "author": {{
+            "@type": "Organization",
+            "name": "{seller.replace(chr(34), chr(92)+chr(34))}"
+        }}''']
+        if img_url:
+            jsonld_parts.append(f''',
+        "image": "{img_url}"''')
+        if rating:
+            jsonld_parts.append(f''',
+        "aggregateRating": {{
+            "@type": "AggregateRating",
+            "ratingValue": "{rating}",
+            "bestRating": "5"
+        }}''')
+        jsonld_parts.append(f'''
+    }}
+    </script>''')
+        game_jsonld = ''.join(jsonld_parts)
+
+        # Breadcrumb JSON-LD
+        breadcrumb_jsonld = f'''    <script type="application/ld+json">
+    {{
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {{
+                "@type": "ListItem",
+                "position": "1",
+                "name": "Epic Games Free Games History",
+                "item": "https://evenwebb.github.io/epic-free-games-scraper/"
+            }},
+            {{
+                "@type": "ListItem",
+                "position": "2",
+                "name": "{name.replace(chr(34), chr(92)+chr(34))}"
+            }}
+        ]
+    }}
+    </script>'''
+
+        rating_val = g.get('rating')
+
+        # Build meta line parts
+        meta_parts = [seller, 'PC']
+        if offer_type:
+            meta_parts.append(offer_type)
+        meta_line = ' <span class="meta-sep">·</span> '.join(html.escape(p) for p in meta_parts)
+
+        # Build stats grid
+        stats_cards = []
+        stats_cards.append(f'''                    <div class="detail-stat-card">
+                        <span class="detail-stat-value price-highlight">{price_str}</span>
+                        <span class="detail-stat-label">Normal Price</span>
+                    </div>''')
+        stats_cards.append(f'''                    <div class="detail-stat-card">
+                        <span class="detail-stat-value">{dur_str}</span>
+                        <span class="detail-stat-label">Free Duration</span>
+                    </div>''')
+        if rating_val:
+            stars = '★' * min(5, round(rating_val))
+            stats_cards.append(f'''                    <div class="detail-stat-card">
+                        <span class="detail-stat-value rating-highlight">{stars} {rating_val}/5</span>
+                        <span class="detail-stat-label">Epic Rating</span>
+                    </div>''')
+        stats_cards.append(f'''                    <div class="detail-stat-card">
+                        <span class="detail-stat-value">{fc}×</span>
+                        <span class="detail-stat-label">Times Free</span>
+                    </div>''')
+        stats_html = '\n'.join(stats_cards)
+
+        # Tags and categories combined
+        tags_cats_parts = []
+        if tags_html:
+            tags_cats_parts.append(tags_html)
+        if cats_html:
+            tags_cats_parts.append(cats_html)
+        tags_cats_combined = '\n                    '.join(tags_cats_parts)
+
+        # Promotion timeline items
+        promo_items = []
+        if last_free:
+            promo_items.append(f'''                    <div class="promo-item">
+                        <div class="promo-date">{last_free}</div>
+                        <div class="promo-meta">Last free period</div>
+                    </div>''')
+        if first_free:
+            cls = 'promo-item current' if first_free == last_free else 'promo-item'
+            promo_items.append(f'''                    <div class="{cls}">
+                        <div class="promo-date">{first_free}</div>
+                        <div class="promo-meta">First free period</div>
+                    </div>''')
+        promo_html = '\n'.join(promo_items) if promo_items else '<p>No promotion history available.</p>'
 
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -763,32 +961,51 @@ def generate_game_pages(data):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{name} - Epic Games Free Games History</title>
-    <meta name="description" content="{desc[:160]}">
+    <meta name="description" content="{desc_clean}">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="{page_url}">
+    <meta property="og:title" content="{name} - Epic Games Free Games History">
+    <meta property="og:description" content="{desc_clean}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{page_url}">
+    <meta property="og:site_name" content="Epic Games Free Games Tracker">
+    <meta property="og:locale" content="en_GB">{og_img_tags}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{name} - Epic Games Free Games History">
+    <meta name="twitter:description" content="{desc_clean}">
+    <link rel="icon" type="image/svg+xml" href="/epic-free-games-scraper/favicon.svg">
     <link rel="stylesheet" href="../css/styles.css">
+{game_jsonld}
+{breadcrumb_jsonld}
 </head>
 <body>
     <header class="site-header">
         <div class="container">
-            <a href="../">&larr; Back to all games</a>
+            <nav aria-label="Breadcrumb">
+                <a href="../">&larr; Back to all games</a>
+            </nav>
             <h1>{name}</h1>
+            <div class="detail-meta-line">{meta_line}</div>
         </div>
     </header>
     <main class="container game-detail">
-        <div class="game-detail-layout">
-            {f'<img src="../{img}" alt="{name}" class="game-detail-image">' if img else ''}
-            <div class="game-detail-info">
-                <p><strong>Seller:</strong> {seller}</p>
-                <p><strong>Normal price:</strong> {price_str}</p>
-                <p><strong>Free duration:</strong> {dur_str}</p>
-                {f'<p><strong>Previously free:</strong> {fc - 1} times</p>' if fc > 1 else ''}
-                {f'<p><strong>First free:</strong> {first_free}</p>' if first_free else ''}
-                {f'<p><strong>Last free:</strong> {last_free}</p>' if last_free else ''}
-                {f'<p><strong>Offer type:</strong> {offer_type}</p>' if offer_type else ''}
-                <p><strong>Code redemption:</strong> {code_only}</p>
-                {f'<div class="game-detail-tags">{tags_html}</div>' if tags_html else ''}
-                {f'<div class="game-detail-cats">{cats_html}</div>' if cats_html else ''}
-                {f'<p class="game-detail-desc">{desc}</p>' if desc else ''}
-                <a href="{link}" target="_blank" rel="noopener" class="cta-button">View on Epic Games Store</a>
+        <div class="game-detail-hero">
+            <div class="game-detail-image-wrapper">
+                {f'<img src="../{img}" alt="{name}">' if img else '<div class="no-image">No Image Available</div>'}
+            </div>
+            <div class="game-detail-main">
+                <div class="detail-stats-grid">
+{stats_html}
+                </div>
+                {f'<div class="detail-tags-section">{tags_cats_combined}</div>' if tags_cats_combined else ''}
+                {f'<p class="detail-desc">{desc}</p>' if desc else ''}
+                <a href="{link}" target="_blank" rel="noopener" class="detail-cta">View on Epic Games Store &#x2197;</a>
+            </div>
+        </div>
+        <div class="detail-promo-history">
+            <h2>Promotion History</h2>
+            <div class="promo-timeline">
+{promo_html}
             </div>
         </div>
     </main>
@@ -798,6 +1015,66 @@ def generate_game_pages(data):
             f.write(html_content)
         count += 1
     print(f"Generated {count} game detail pages in website/game/")
+
+
+def generate_robots_txt():
+    """Generate robots.txt allowing all crawlers, pointing to sitemap."""
+    robots = """User-agent: *
+Allow: /
+Sitemap: https://evenwebb.github.io/epic-free-games-scraper/sitemap.xml
+"""
+    with open('website/robots.txt', 'w', encoding='utf-8') as f:
+        f.write(robots)
+    print("Generated website/robots.txt")
+
+
+def generate_sitemap_xml(data):
+    """Generate sitemap.xml with all pages."""
+    all_games = data['allGames']
+    lastmod = data['lastUpdated'][:10]  # YYYY-MM-DD
+
+    urls = [f"""  <url>
+    <loc>https://evenwebb.github.io/epic-free-games-scraper/</loc>
+    <lastmod>{lastmod}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>"""]
+
+    for g in all_games:
+        slug = g['epicId']
+        game_lastmod = (g.get('lastFreeDate') or g.get('firstFreeDate') or lastmod)[:10]
+        urls.append(f"""  <url>
+    <loc>https://evenwebb.github.io/epic-free-games-scraper/game/{slug}.html</loc>
+    <lastmod>{game_lastmod}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>""")
+
+    sitemap = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{chr(10).join(urls)}
+</urlset>
+"""
+    with open('website/sitemap.xml', 'w', encoding='utf-8') as f:
+        f.write(sitemap)
+    print(f"Generated website/sitemap.xml ({len(all_games) + 1} URLs)")
+
+
+def generate_favicon():
+    """Generate SVG favicon with gamepad icon."""
+    favicon = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0078f2"/>
+      <stop offset="100%" style="stop-color:#00d4ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="20" fill="url(#bg)"/>
+  <text x="50" y="68" font-size="60" text-anchor="middle" fill="white" font-family="sans-serif" font-weight="bold">&#x1F3AE;</text>
+</svg>'''
+    with open('website/favicon.svg', 'w', encoding='utf-8') as f:
+        f.write(favicon)
+    print("Generated website/favicon.svg")
 
 
 def generate_website():
@@ -830,6 +1107,9 @@ def generate_website():
     generate_html(data)
     generate_manifest()
     generate_sw()
+    generate_robots_txt()
+    generate_sitemap_xml(data)
+    generate_favicon()
     generate_rss(data)
     generate_ics(data)
     generate_api_latest(data)
