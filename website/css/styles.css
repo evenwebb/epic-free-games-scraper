@@ -869,7 +869,7 @@ html {
 /* Stats grid */
 .detail-stats-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 0.5rem;
     margin-bottom: var(--spacing-md);
 }
@@ -1005,10 +1005,6 @@ html {
     .game-detail-hero {
         grid-template-columns: 1fr;
         gap: var(--spacing-lg);
-    }
-
-    .detail-stats-grid {
-        grid-template-columns: 1fr 1fr;
     }
 
     .page-detail .site-header h1 {
