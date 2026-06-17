@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-06-17T00:20:09.365294Z",
+  "lastUpdated": "2026-06-17T00:26:25.463498Z",
   "sellerStats": [
     {
       "name": "Wired Productions",
@@ -26,7 +26,7 @@
     "totalGames": 623,
     "totalPromotions": 688,
     "firstGameDate": "2018-12-14T16:00:00+00:00",
-    "avgGamesPerWeek": 1.7568012559857715,
+    "avgGamesPerWeek": 1.7568002217793568,
     "gamesByYear": {
       "2018": 2,
       "2019": 69,
@@ -333,7 +333,7 @@
       "name": "Songs of Conquest",
       "link": "https://store.epicgames.com/en-GB/p/songs-of-conquest",
       "rating": null,
-      "image": null,
+      "image": "images/62b6d302e2bd41039449b1f2f9608748.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -395,7 +395,7 @@
       "name": "Calico",
       "link": "https://store.epicgames.com/en-GB/p/calico",
       "rating": null,
-      "image": null,
+      "image": "images/7fc5abc8f11c471e837ddd00ce963350.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
@@ -519,7 +519,7 @@
       "name": "Sunderfolk - Standard Edition",
       "link": "https://store.epicgames.com/en-GB/p/sunderfolk-standard-edition-83c05e",
       "rating": null,
-      "image": null,
+      "image": "images/190cb955f17f48dcb8576aa8288c887f.jpg",
       "originalPrice": null,
       "discountPrice": null,
       "currency": null,
