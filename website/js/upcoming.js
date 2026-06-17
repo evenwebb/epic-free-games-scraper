@@ -58,6 +58,8 @@ function createUpcomingGameCard(game) {
     const card = document.createElement('div');
     card.className = 'upcoming-card animate';
 
+    const detailUrl = game.epicId ? `game/${game.epicId}.html` : null;
+
     // Image section
     const imageDiv = document.createElement('div');
     imageDiv.className = 'upcoming-card-image';
@@ -67,7 +69,14 @@ function createUpcomingGameCard(game) {
         img.src = game.image;
         img.alt = game.name;
         img.loading = 'lazy';
-        imageDiv.appendChild(img);
+        if (detailUrl) {
+            const imgLink = document.createElement('a');
+            imgLink.href = detailUrl;
+            imgLink.appendChild(img);
+            imageDiv.appendChild(imgLink);
+        } else {
+            imageDiv.appendChild(img);
+        }
     } else {
         const placeholder = document.createElement('div');
         placeholder.className = 'placeholder';
@@ -89,9 +98,11 @@ function createUpcomingGameCard(game) {
     const title = document.createElement('h3');
     title.className = 'upcoming-card-title';
     const titleLink = document.createElement('a');
-    titleLink.href = game.link;
-    titleLink.target = '_blank';
-    titleLink.rel = 'noopener noreferrer';
+    titleLink.href = detailUrl || game.link;
+    if (!detailUrl) {
+        titleLink.target = '_blank';
+        titleLink.rel = 'noopener noreferrer';
+    }
     titleLink.textContent = game.name;
     title.appendChild(titleLink);
     content.appendChild(title);
@@ -148,7 +159,7 @@ function createUpcomingGameCard(game) {
         content.appendChild(rating);
     }
 
-    // CTA button
+    // CTA button - links to Epic Store
     const ctaButton = document.createElement('a');
     ctaButton.href = game.link;
     ctaButton.target = '_blank';

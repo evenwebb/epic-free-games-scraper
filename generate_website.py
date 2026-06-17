@@ -606,7 +606,21 @@ def generate_current_games_html(games):
     for game in games:
         name = escape(game["name"])
         img_src = escape(game["image"]) if game.get('image') else ''
-        image_html = f'<img src="{img_src}" alt="{name}" loading="lazy">' if game.get('image') else '<div class="no-image">No Image</div>'
+        epic_id = game.get('epicId')
+        detail_url = f'game/{escape(epic_id)}.html' if epic_id else None
+
+        # Image with optional detail page link
+        if game.get('image'):
+            img_tag = f'<img src="{img_src}" alt="{name}" loading="lazy">'
+            image_html = f'<a href="{detail_url}">{img_tag}</a>' if detail_url else img_tag
+        else:
+            image_html = '<div class="no-image">No Image</div>'
+
+        # Title with optional detail page link
+        if detail_url:
+            title_html = f'<h3><a href="{detail_url}">{name}</a></h3>'
+        else:
+            title_html = f'<h3>{name}</h3>'
 
         price_html = ''
         if game.get('originalPrice') and game.get('originalPrice') > 0:
@@ -641,13 +655,18 @@ def generate_current_games_html(games):
         desc = game.get('description')
         desc_html = f'<p class="game-desc">{escape(desc)}</p>' if desc else ''
 
+        # Store link
+        store_link = ''
+        if detail_url:
+            store_link = f'<a href="{escape(game["link"])}" target="_blank" rel="noopener" class="hero-card-store-link">Epic Store &#x2197;</a>'
+
         html_parts.append(f'''
             <div class="hero-card">
                 <div class="hero-card-image">
                     {image_html}
                 </div>
                 <div class="hero-card-content">
-                    <h3>{name}</h3>
+                    {title_html}
                     {seller_html}
                     {start_date_html}
                     {price_html}
@@ -655,6 +674,7 @@ def generate_current_games_html(games):
                     {desc_html}
                     <div class="countdown" data-end="{game.get("endDate", "")}">Time remaining...</div>
                     <a href="{escape(game["link"])}" target="_blank" rel="noopener" class="cta-button">Get It Free</a>
+                    {store_link}
                 </div>
             </div>
         ''')
