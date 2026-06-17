@@ -167,7 +167,7 @@ def export_data_json(db):
         free_count = promo_counts.get(game['id'], 1)
 
         epic_id = game['epic_id']
-        detail_slug = f'{slugify(game["name"])}-{epic_id}'
+        detail_slug = f'{slugify(game["name"])}-{epic_id[:8]}'
 
         return {
             'id': game['id'],

@@ -778,7 +778,7 @@ html {
 
 /* body class used since header and main are siblings, not parent/child */
 .page-detail .site-header {
-    padding: var(--spacing-xl) 0 var(--spacing-lg);
+    padding: var(--spacing-md) 0 var(--spacing-sm);
     text-align: left;
     border-bottom: 1px solid var(--color-border);
     background: none;
@@ -790,7 +790,7 @@ html {
 }
 
 .page-detail .site-header h1 {
-    font-size: 2.25rem;
+    font-size: 2rem;
     font-weight: 800;
     letter-spacing: -0.5px;
     background: none;
@@ -799,7 +799,7 @@ html {
 }
 
 .page-detail .site-header nav {
-    margin-bottom: var(--spacing-md);
+    margin-bottom: var(--spacing-sm);
 }
 
 .page-detail .site-header nav a {
@@ -820,9 +820,9 @@ html {
 .game-detail-hero {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--spacing-xxl);
-    margin-top: var(--spacing-xl);
-    margin-bottom: var(--spacing-xxl);
+    gap: var(--spacing-xl);
+    margin-top: var(--spacing-md);
+    margin-bottom: var(--spacing-xl);
 }
 
 .game-detail-image-wrapper {
