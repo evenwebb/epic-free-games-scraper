@@ -978,7 +978,7 @@ def generate_game_pages(data):
 {game_jsonld}
 {breadcrumb_jsonld}
 </head>
-<body>
+<body class="page-detail">
     <header class="site-header">
         <div class="container">
             <nav aria-label="Breadcrumb">

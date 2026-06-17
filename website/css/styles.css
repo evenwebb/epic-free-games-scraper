@@ -754,19 +754,20 @@ html {
     padding: var(--spacing-xxl) 0;
 }
 
-.game-detail .site-header {
+/* body class used since header and main are siblings, not parent/child */
+.page-detail .site-header {
     padding: var(--spacing-xl) 0 var(--spacing-lg);
     text-align: left;
     border-bottom: 1px solid var(--color-border);
     background: none;
 }
 
-.game-detail .site-header::before,
-.game-detail .site-header::after {
+.page-detail .site-header::before,
+.page-detail .site-header::after {
     display: none;
 }
 
-.game-detail .site-header h1 {
+.page-detail .site-header h1 {
     font-size: 2.25rem;
     font-weight: 800;
     letter-spacing: -0.5px;
@@ -775,11 +776,11 @@ html {
     color: var(--color-text);
 }
 
-.game-detail .site-header nav {
+.page-detail .site-header nav {
     margin-bottom: var(--spacing-md);
 }
 
-.game-detail .site-header nav a {
+.page-detail .site-header nav a {
     color: var(--color-text-secondary);
     text-decoration: none;
     font-size: 0.9rem;
@@ -789,7 +790,7 @@ html {
     gap: 0.3rem;
 }
 
-.game-detail .site-header nav a:hover {
+.page-detail .site-header nav a:hover {
     color: var(--color-primary);
 }
 
@@ -988,7 +989,7 @@ html {
         grid-template-columns: 1fr 1fr;
     }
 
-    .game-detail .site-header h1 {
+    .page-detail .site-header h1 {
         font-size: 1.5rem;
     }
 
