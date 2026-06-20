@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
@@ -38,7 +38,7 @@ jobs:
         id: check
         run: python3 scripts/api_hash_check.py
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         if: steps.check.outputs.api_unchanged != 'true'
         with:
           python-version: '3.12'
@@ -62,37 +62,27 @@ jobs:
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Configure git
-        if: steps.check.outputs.api_unchanged != 'true'
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-
       - name: Build and commit
         if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 generate_website.py
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           git add output/epic_games.db output/images/ output/.api_hash
           if ! git diff --staged --quiet; then
             git commit -m "Update database and images - $(date -u +"%Y-%m-%d %H:%M UTC")"
             auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
-            pushed=false
             for attempt in 1 2 3; do
               if git -c http.https://github.com/.extraheader= \
                 -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
                 push origin HEAD:main; then
-                pushed=true
                 break
               fi
               echo "Push attempt $attempt failed, retrying..."
               git pull --rebase origin main
             done
-            if [ "$pushed" != "true" ]; then
-              echo "ERROR: All push attempts failed"
-              exit 1
-            fi
           fi
 
       - name: Commit .api_hash only (when no db/images changes)
@@ -100,29 +90,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           git add output/.api_hash
           if ! git diff --staged --quiet; then
             git commit -m "Update API hash - $(date -u +"%Y-%m-%d %H:%M UTC")"
             auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
-            pushed=false
             for attempt in 1 2 3; do
               if git -c http.https://github.com/.extraheader= \
                 -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
                 push origin HEAD:main; then
-                pushed=true
                 break
               fi
               echo "Push attempt $attempt failed, retrying..."
               git pull --rebase origin main
             done
-            if [ "$pushed" != "true" ]; then
-              echo "ERROR: All push attempts failed"
-              exit 1
-            fi
           fi
 
       - if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - if: steps.check.outputs.api_unchanged != 'true' && steps.changes.outputs.changed == 'true'
         uses: actions/upload-pages-artifact@v5
