@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://evenwebb.github.io/epic-free-games-scraper/sitemap.xml
