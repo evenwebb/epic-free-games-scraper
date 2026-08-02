@@ -9,8 +9,15 @@ import epic_config
 from epic_client import (
     compute_api_hash,
     epic_free_discount_percentage,
+    extract_game_metadata,
+    format_date,
+    get_game_image_url,
     get_game_link,
+    get_game_price,
     parse_offer_iso_dates,
+    resolve_tag_names,
+    sanitize_filename,
+    validate_url,
 )
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "free_games_promotions_sample.json"
@@ -64,3 +71,56 @@ def test_malformed_offer_safe():
     assert epic_free_discount_percentage({}) is None
     assert epic_free_discount_percentage({"discountSetting": {}}) is None
     assert parse_offer_iso_dates({}, "x") == (None, None)
+
+
+def test_sanitize_filename():
+    assert sanitize_filename("hello") == "hello"
+    assert sanitize_filename("") == "unknown"
+    assert sanitize_filename("../etc/passwd") == "_etc_passwd"
+    assert sanitize_filename("test\x00null") == "test_null"
+    assert sanitize_filename(".hidden") == "hidden"
+    assert sanitize_filename("a" * 250) == "a" * 200
+
+
+def test_resolve_tag_names():
+    assert resolve_tag_names(None) is None
+    assert resolve_tag_names("") is None
+    assert resolve_tag_names("1395,1370") == "Action,Action-Adventure"
+    assert resolve_tag_names("99999") == "99999"
+
+
+def test_get_game_image_url():
+    game = {"keyImages": [{"type": "Thumbnail", "url": "thumb.jpg"}, {"type": "OfferImageWide", "url": "wide.jpg"}]}
+    assert get_game_image_url(game) == "wide.jpg"
+    assert get_game_image_url({}) is None
+    assert get_game_image_url({"keyImages": []}) is None
+
+
+def test_get_game_price():
+    game = {"price": {"totalPrice": {"originalPrice": 1999, "discountPrice": 0, "currencyCode": "GBP"}}}
+    orig, disc, curr = get_game_price(game)
+    assert orig == 1999
+    assert disc == 0
+    assert curr == "GBP"
+
+
+def test_format_date():
+    result = format_date("2026-08-15T16:00:00Z")
+    assert "Aug 15" in result or "15 Aug" in result
+
+
+def test_extract_game_metadata():
+    game = {"title": "Test Game", "description": "A test", "namespace": "test", "isCodeRedemptionOnly": False}
+    meta = extract_game_metadata(game)
+    assert meta["description"] == "A test"
+    assert meta["sandbox_id"] == "test"
+    assert meta["is_code_redemption_only"] is False
+    assert meta["is_blockchain_used"] is False
+
+
+def test_validate_url():
+    assert not validate_url("")
+    assert not validate_url(None)
+    assert not validate_url("http://example.com")
+    assert not validate_url("ftp://example.com/file")
+    assert validate_url("https://example.com/image.jpg")

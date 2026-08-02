@@ -35,8 +35,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Pytest
-        run: pytest -q
+      - name: Pytest with coverage
+        run: pytest -q --cov=epic_client --cov=epic_config --cov=image_processor --cov-report=term --cov-fail-under=40
 
       - name: Generate website from committed DB
         run: python3 generate_website.py
