@@ -39,3 +39,4 @@ website/images/
 # DO NOT ignore output directory - we need it for GitHub Actions
 # The database and images need to be committed
 # output/
+AUDIT-REPORT.md
